@@ -118,3 +118,53 @@ sans déchirure et 60 img/s peut-être déchirées. Troisième voie, non essayé
    Buildroot ne le lèvent. Les deux fils saturés tournent sur l'A55 quel que soit le serveur d'affichage.
 3. Reste à mesurer : déchirure à l'œil ; séquence sans le serveur d'essai sur la box ; séquence avec les
    filtres retirés (pour chiffrer leur part) ; la webcam.
+
+## 5. « Fais basculer Xorg » — la bascule marche, et elle coûte une image sur deux (01/10, ~00 h 50)
+
+Demande d'Eliott : obtenir la bascule (pas de déchirure) **et** 60 img/s. Lu dans le fork
+(`hw/xfree86/drivers/modesetting/dri2.c`) : la bascule DRI2 existe (`ms_dri2_schedule_flip`). Elle n'est prise
+que si `can_flip()` est vrai : pas de curseur affiché (`sprites_visible`), et `DRI2CanFlip()` exige une fenêtre
+**exactement** de la taille de l'écran, en 0,0.
+
+### 🔴 Erratum : la fenêtre du kiosque n'a jamais été en plein écran
+
+`xwininfo -root -tree` (mesuré) : la fenêtre Chromium fait **945×1060 en +10+10**. Sans gestionnaire de fenêtres,
+`--kiosk` (comme `--start-fullscreen`, essayé) ne l'agrandit pas.
+⇒ **Toutes les mesures faites jusqu'ici l'ont été sur une fenêtre d'un demi-écran** :
+- vidéo du 30/09 (58 img/s en 1080p60, 29,3 en 4K30) ;
+- habillage des §§ 1 à 3.
+
+Elles restent vraies pour ce qu'elles mesurent, mais la vidéo était réduite à ~945 px de large. Le chiffre plein
+écran est **à refaire**.
+
+Mécanisme de l'erreur : `--kiosk` a été pris pour une garantie de plein écran. C'est un **souhait** transmis à un
+gestionnaire de fenêtres qui n'existe pas ici. Rien ne se voyait dans les compteurs, et personne ne regardait
+l'écran.
+
+### Mesures : carré témoin, `FlipFB "none"`, 15 à 20 relevés de l'adresse balayée
+
+| Fenêtre | Adresse balayée | Mode de présentation | img/s |
+|---|---|---|---|
+| `--window-size=1920,1080` → Chromium pose **1919×1079** | fixe | recopie | 60,2 |
+| `--window-size=1921,1081` → 1921×1081 | fixe | recopie | 60,4 |
+| retaillée **exactement** en 1920×1080 (`xdotool windowsize`) | **alterne entre 2** | ⭐ **bascule DRI2** | 🔴 **30,4** |
+| exactement 1920×1080 + Chromium `--disable-gpu-vsync` | fixe | recopie | 60,4 |
+
+Remarques :
+- `-nocursor` sur Xorg ne suffit pas seul : c'est la taille de la fenêtre qui décidait.
+- Chromium retire lui-même un pixel quand on lui demande exactement la taille de l'écran.
+
+⇒ **Avec Xorg + libmali DRI2, la bascule plafonne à 30 img/s**, comme `FlipFB "always"`. Deux tampons
+seulement : l'échange attend un retour d'écran de plus, et le code l'écrit (`/* Account for 1 frame extra
+pageflip delay */`, dri2.c l. 961). Il n'y a pas de réglage Xorg qui donne les deux à la fois.
+
+Le choix sous X11 est donc :
+
+| | img/s | Déchirure |
+|---|---|---|
+| bascule (`FlipFB "always"`, ou fenêtre exacte) | 30 | aucune |
+| recopie (`FlipFB "none"` + fenêtre ≠ taille exacte) | 60 | **à juger à l'œil** (`mire-dechirure.mjs`) |
+
+Ce qui donnerait les deux (déduit, non essayé) : un serveur d'affichage à **trois tampons**. C'est le cas d'un
+compositeur Wayland/KMS (Weston, cage) avec libmali `wayland-gbm`, ou de Present/DRI3 si une libmali X11 le
+gérait.

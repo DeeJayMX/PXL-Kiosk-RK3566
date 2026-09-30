@@ -27,7 +27,11 @@ Mali-G52, 4 Go), sous Armbian bookworm (image ophub, noyau Rockchip `6.1.141-rk3
 > Avec `FlipFB "none"`, un élément seul passe à **50-60 img/s**. La séquence complète (6 éléments) reste à
 > **24 img/s** : deux fils de Chromium saturent le processeur, et le GPU n'est qu'à 19 %.
 > 🔴 En `"none"`, Xorg recopie au lieu de basculer : **déchirure possible, à vérifier à l'œil**. La conf livrée
-> reste donc en `"always"` pour l'instant. Détail :
+> reste donc en `"always"` pour l'instant.
+> 🔴 **Erratum du même jour** : la fenêtre de Chromium n'a jamais été en plein écran (**945×1060**, pas de
+> gestionnaire de fenêtres). Toutes les mesures précédentes, vidéo comprise, portent sur un demi-écran. Et en
+> plein écran exact, Xorg bascule, mais à **30 img/s** : sous X11 c'est 60 avec déchirure possible **ou** 30 sans
+> déchirure. Détail :
 > [`docs/recherche/test_habillage_urban_trail.md`](docs/recherche/test_habillage_urban_trail.md).
 
 ---
