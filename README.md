@@ -12,6 +12,16 @@ Mali-G52, 4 Go), sous Armbian bookworm (image ophub, noyau Rockchip `6.1.141-rk3
 > `patches/kbase-opp-ophub.patch`) : **58 img/s en H.264 1080p60** et **29,3 en HEVC 4K30**,
 > GPU fixé à 800 MHz.
 
+## État au 30/09/2026, 23 h 35
+
+| | |
+|---|---|
+| Chromium + décodage matériel | ✅ **démontré** (MPP, sessions `rkvdec` vues pendant chaque lecture) |
+| Installé en permanence sur la TurboNode | ❌ non : la box est **restaurée**, elle affiche le PGM TurboHQ |
+| Déjà compilé sur la box (`/opt/pxl-kiosk`) | module kbase + correctif OPP, Xorg Rockchip, paquets Radxa décompressés. Relancer = scripts **25 → 30 → 40**, sans recompiler |
+| Sortie | ⚠️ **pas directe** : fenêtre X11 → glamor → `FlipFB`. La vidéo est composée par le GPU dans la page (58 img/s en 1080p60, pas 60) |
+| Sortie directe (vidéo sur un plan matériel) | 🎯 à faire : Wayland + libmali `wayland-gbm` + Chromium ozone-wayland patché Rockchip (à compiler) |
+
 ---
 
 ## 1. Pourquoi ce dépôt existe
