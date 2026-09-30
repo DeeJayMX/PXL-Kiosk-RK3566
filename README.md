@@ -22,6 +22,14 @@ Mali-G52, 4 Go), sous Armbian bookworm (image ophub, noyau Rockchip `6.1.141-rk3
 | Sortie | ⚠️ **pas directe** : fenêtre X11 → glamor → `FlipFB`. La vidéo est composée par le GPU dans la page (58 img/s en 1080p60, pas 60) |
 | Sortie directe (vidéo sur un plan matériel) | 🎯 à faire : Wayland + libmali `wayland-gbm` + Chromium ozone-wayland patché Rockchip (à compiler) |
 
+> ⭐ **01/10/2026 — habillage animé (page PGM d'Urban Trail) : la cadence était divisée par deux par
+> `FlipFB "always"`.** Avec ce réglage, **toute** animation plafonne à 30 img/s, un carré CSS trivial compris.
+> Avec `FlipFB "none"`, un élément seul passe à **50-60 img/s**. La séquence complète (6 éléments) reste à
+> **24 img/s** : deux fils de Chromium saturent le processeur, et le GPU n'est qu'à 19 %.
+> 🔴 En `"none"`, Xorg recopie au lieu de basculer : **déchirure possible, à vérifier à l'œil**. La conf livrée
+> reste donc en `"always"` pour l'instant. Détail :
+> [`docs/recherche/test_habillage_urban_trail.md`](docs/recherche/test_habillage_urban_trail.md).
+
 ---
 
 ## 1. Pourquoi ce dépôt existe
@@ -104,7 +112,12 @@ redémarrage est donc aussi un retour garanti à Panfrost.
   1080p60, HEVC 1080p60 et 2160p30) avec compteur d'images incrusté ;
 - `mesure.mjs` : pilote le Chromium du kiosque par DevTools et mesure images
   présentées, décodées, perdues et avance réelle ;
-- `mesurer-serie.sh` : les 4 clips, plus CPU, température et **sessions MPP**.
+- `mesurer-serie.sh` : les 4 clips, plus CPU, température et **sessions MPP** ;
+- `habillage.mjs` : l'habillage d'`urban-trail-2026`, élément par élément, sur un serveur d'**essai**
+  (`SRV=`, 127.0.0.1:8799 par défaut) — images dessinées, accrocs, CPU, GPU ;
+- `animation-temoin.mjs` : contrôle, un carré CSS qui glisse (distingue « la page » de « la chaîne
+  d'affichage ») ;
+- `mire-dechirure.mjs` : barres qui défilent, pour juger la déchirure **à l'œil**.
 
 Mesures du 30/09/2026 (sortie HDMI 1080p60). Premier passage, **GPU à 166 MHz** :
 
