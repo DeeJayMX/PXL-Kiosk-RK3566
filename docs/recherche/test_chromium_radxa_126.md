@@ -212,3 +212,34 @@ Ensuite viendront X11 (pas d'overlay vidéo) et `FlipFB always`.
   plateforme `rk`) ;
 - (2) essayer la libmali **g29p1** du SDK, appariée au kbase ;
 - (3) mesurer en 60p après (1).
+
+## 🔴 Incident du 30/09, 23 h 16 - 23 h 34 — `rmmod bifrost_kbase` → Oops, box figée, labo coupé
+
+*Écrit pour ne pas être refait.*
+
+1. [M] Premier rejeu du dépôt réussi. `restaurer.sh` fait alors `rmmod
+   bifrost_kbase` + `modprobe panfrost`, puis relance turbohq.
+2. [M] `WARN` dans `clk_core_unprepare` au chargement de panfrost. Puis, au modeset
+   du présentateur : **Oops** `Unable to handle kernel paging request` dans
+   `rockchip_system_status_notifier` ← `vop2_set_system_status` ←
+   `vop2_crtc_atomic_disable`. Le présentateur reste bloqué en D dans
+   `drm_fb_release`.
+3. [D] Mécanisme : avec les OPP actives (le correctif), kbase s'inscrit au moniteur
+   système Rockchip. Le `rmmod` y laisse un pointeur vers le module déchargé, que le
+   premier changement d'état du VOP2 appelle. ⚠️ `restaurer.sh` venait de remettre
+   `panic_on_oops=0` : le filet était retiré **avant** la manœuvre risquée.
+4. [M] Redémarrage forcé demandé à distance. La box met plus de 10 minutes à revenir,
+   puis revient seule (aucune intervention physique).
+5. [M] Pendant ce temps, **`pxl-tx` aussi est hors ligne**, alors qu'elle n'a pas
+   redémarré (5 j de fonctionnement) : son accès passe par la TurboNode
+   (`turbohq-dhcp`, `turbohq-dns`, `turbohq-routage`). ⇒ **toucher au noyau de la
+   TurboNode peut couper le réseau du labo.**
+6. [M] Après le retour : paquets, modules, unités et sysctl identiques. Mais le
+   présentateur reste **en veille** : son `thq-video-pipe` était mort sur
+   `EHOSTUNREACH 192.168.55.10:8720` pendant la coupure, et **n'est pas relancé**. Un
+   `systemctl restart turbohq.service` le ramène, et l'affichage redevient identique
+   à l'état initial. ⚠️ À remonter côté TurboHQ : **le pipe ne survit pas à une
+   coupure du relais.**
+
+**Corrections faites** : `restaurer.sh` ne décharge plus jamais kbase. Il purge,
+garde le filet panic et **redémarre**, puis se relance pour vérifier.
