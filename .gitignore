@@ -1,0 +1,8 @@
+# Jamais de binaire : les scripts les produisent.
+*.ko
+*.deb
+*.o
+*.mp4
+*.mkv
+*.webm
+scripts/banc/media/

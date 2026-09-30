@@ -1,0 +1,10 @@
+<!doctype html><meta charset=utf-8><title>banc</title>
+<style>html,body{margin:0;background:#000;height:100%;overflow:hidden}video{width:100vw;height:100vh;object-fit:contain}</style>
+<video id=v muted loop autoplay playsinline></video>
+<script>
+const v=document.getElementById('v'); v.src='media/'+new URLSearchParams(location.search).get('src');
+window.rvfc=0; window.last=null; window.gaps=[];
+const cb=(now,md)=>{ if(window.last!==null) window.gaps.push(md.presentedFrames-window.last); window.last=md.presentedFrames; window.rvfc++; v.requestVideoFrameCallback(cb); };
+v.requestVideoFrameCallback(cb);
+window.snap=()=>{const q=v.getVideoPlaybackQuality(); return {t:performance.now(), total:q.totalVideoFrames, dropped:q.droppedVideoFrames, rvfc:window.rvfc, ct:v.currentTime, w:v.videoWidth, h:v.videoHeight, err:v.error&&v.error.code, paused:v.paused};};
+</script>
