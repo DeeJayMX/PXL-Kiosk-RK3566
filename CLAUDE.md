@@ -41,7 +41,8 @@ Voir `README.md` pour la recette et `docs/README.md` pour l'index du dossier.
   l'**accord explicite** d'Eliott. Le filet `kernel.panic=10` / `panic_on_oops=1` est
   posé par le script 30 et retiré par `restaurer.sh`.
 - Un redémarrage ramène Panfrost : le module n'est jamais installé dans
-  `/lib/modules`.
+  `/lib/modules`. 🔴 **C'est même le SEUL retour sûr** : un `rmmod bifrost_kbase` fait un
+  Oops du noyau au modeset suivant (mesuré le 30/09/2026).
 
 ## Les pièges déjà payés — ne pas les repayer
 
@@ -55,4 +56,6 @@ Voir `README.md` pour la recette et `docs/README.md` pour l'index du dossier.
 | module kbase : `devfreq_table` inconnu, etc. | `EXTRA_CFLAGS` passé en ligne de commande écrase ceux du Makefile | passer par `KCFLAGS` |
 | module kbase : `mali_read_poll_timeout_atomic` implicite | vieille `version_compat_defs.h` des en-têtes ophub | forcer celle des sources (`-include`) |
 | Mesa 25 chargée seulement pour Chromium → llvmpipe | client Mesa 25 face à un Xorg lié à Mesa 22.3 (`DRI3: Could not get DRI3 device`) | tout le système sur la même Mesa, ou libmali |
-| GPU à 166 MHz sous kbase | `no supported OPPs` (DT ophub, `opp-supported-hw`) | **ouvert** |
+| GPU à 166 MHz sous kbase, `no supported OPPs` | DT ophub : `rockchip,supported-hw` sans `opp-supported-hw` sur les entrées ; horloge nommée `gpu` et non `clk_mali` | `patches/kbase-opp-ophub.patch` (appliqué par le script 10) |
+| 🔴 Oops `rockchip_system_status_notifier`, présentateur bloqué en D dans `drm_fb_release` | `rmmod bifrost_kbase` avec OPP actives : pointeur laissé dans le moniteur système Rockchip | **ne jamais `rmmod` kbase** : redémarrer (`restaurer.sh` le fait) |
+| 60p à 49-53 img/s alors que le décodeur tient 60 | `simple_ondemand` : GPU entre 300 et 400 MHz | gouverneur `performance` : 58 img/s |

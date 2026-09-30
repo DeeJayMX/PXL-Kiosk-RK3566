@@ -1,0 +1,49 @@
+diff --git a/drivers/gpu/arm/bifrost/platform/rk/mali_kbase_config_rk.c b/drivers/gpu/arm/bifrost/platform/rk/mali_kbase_config_rk.c
+index 0b8a204..3105bff 100755
+--- a/drivers/gpu/arm/bifrost/platform/rk/mali_kbase_config_rk.c
++++ b/drivers/gpu/arm/bifrost/platform/rk/mali_kbase_config_rk.c
+@@ -739,11 +739,43 @@ int kbase_platform_rk_init_opp_table(struct kbase_device *kbdev)
+ {
+ 	struct rockchip_opp_info *info = &kbdev->opp_info;
+ 
++	struct device_node *np;
++	const char *clk_name = "clk_mali";
++
++	/*
++	 * PXL (DT ophub/Armbian) : la table GPU declare « rockchip,supported-hw »
++	 * mais AUCUNE de ses entrees ne porte « opp-supported-hw ». Le noyau 6.1
++	 * pose alors un masque et rejette toutes les entrees (« no supported
++	 * OPPs ») : pas de devfreq, GPU fige. Si aucune entree ne porte de
++	 * masque, on retire la propriete de la COPIE EN MEMOIRE du DT
++	 * (le .dtb sur disque n est pas touche).
++	 */
++	np = of_parse_phandle(kbdev->dev->of_node, "operating-points-v2", 0);
++	if (np) {
++		struct device_node *child;
++		struct property *prop;
++		bool masque = false;
++
++		for_each_available_child_of_node(np, child)
++			if (of_find_property(child, "opp-supported-hw", NULL))
++				masque = true;
++		prop = of_find_property(np, "rockchip,supported-hw", NULL);
++		if (!masque && prop) {
++			of_remove_property(np, prop);
++			dev_info(kbdev->dev, "PXL: rockchip,supported-hw retire (aucune OPP ne porte de masque)\n");
++		}
++		of_node_put(np);
++	}
++	/* PXL : le DT ophub nomme l horloge « gpu », le DT Rockchip « clk_mali ». */
++	if (of_property_match_string(kbdev->dev->of_node, "clock-names", "clk_mali") < 0 &&
++	    of_property_match_string(kbdev->dev->of_node, "clock-names", "gpu") >= 0)
++		clk_name = "gpu";
++
+ 	info->data = &rockchip_gpu_opp_data;
+ 	rockchip_get_opp_data(rockchip_mali_of_match, &kbdev->opp_info);
+ 
+ 	return rockchip_init_opp_table(kbdev->dev, &kbdev->opp_info,
+-				       "clk_mali", "mali");
++				       clk_name, "mali");
+ }
+ 
+ void kbase_platform_rk_uninit_opp_table(struct kbase_device *kbdev)

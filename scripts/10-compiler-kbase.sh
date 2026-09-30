@@ -18,6 +18,16 @@ if [ ! -d "$D/.git" ]; then
   git -C "$D" sparse-checkout set drivers/gpu/arm/bifrost include/uapi/gpu/arm/bifrost
 fi
 
+# Correctif PXL (patches/kbase-opp-ophub.patch) — sans lui, sur le DT ophub : « no
+# supported OPPs », pas de devfreq, GPU figé à 166 MHz (mesuré 30/09/2026). Deux
+# causes : la table déclare « rockchip,supported-hw » sans qu'aucune entrée ne porte
+# « opp-supported-hw » (le noyau 6.1 les rejette alors toutes), et l'horloge s'y nomme
+# « gpu » là où le pilote demande « clk_mali » (nom du DT Rockchip/Android).
+DEPOT=$(cd "$(dirname "$0")/.." && pwd)
+git -C "$D" checkout -q -- drivers/gpu/arm/bifrost
+git -C "$D" apply "$DEPOT/patches/kbase-opp-ophub.patch" || meurs "correctif OPP non applicable"
+dire "correctif OPP appliqué"
+
 # 🔴 Piège 1 — les en-têtes du noyau ophub portent une version_compat_defs.h PLUS
 # ANCIENNE que celle attendue par ce pilote, et elle passe devant dans le chemin
 # d'inclusion (LINUXINCLUDE avant ccflags). On FORCE la bonne en tête : sa garde

@@ -8,8 +8,9 @@ Mali-G52, 4 Go), sous Armbian bookworm (image ophub, noyau Rockchip `6.1.141-rk3
 
 > ✅ **30/09/2026 — le décodage matériel marche dans Chromium sur RK3566.** MPP décode en
 > H.264 comme en HEVC, et le HEVC, **illisible** jusque-là, passe à 57 img/s en 1080p60.
-> Ce qui manque encore en 60p se perd à l'affichage, pas au décodage : le GPU reste
-> **bloqué à 166 MHz** sous le pilote kbase (voir « Ce qui reste »).
+> Le soir même, le GPU est **débloqué** (200 à 800 MHz sous kbase, correctif
+> `patches/kbase-opp-ophub.patch`) : **58 img/s en H.264 1080p60** et **29,3 en HEVC 4K30**,
+> GPU fixé à 800 MHz.
 
 ---
 
@@ -21,7 +22,8 @@ La voie « normale » ne décode rien en matériel sur cette puce, et c'est **me
 |---|---|---|---|---|---|
 | Chromium **Debian** + Panfrost | Mali (Panfrost) | ❌ logiciel : pas de `/dev/video*` sur le noyau Rockchip, que MPP | — | — | ❌ |
 | Chromium **Radxa 126** (patché Rockchip) + Panfrost, Mesa 22.3 **ou** 25.0 | Mali (Panfrost) | ❌ MPP décode, mais **Panfrost ne sait pas exporter du NV12 par GBM** : le processus GPU plante, puis repli logiciel | 30 img/s, **246 % CPU**, 82 °C | 39 img/s, CPU saturé | ❌ illisible |
-| **Cette recette** : kbase + libmali + Xorg Rockchip + Chromium Radxa 126 | Mali (libmali, GLES 3.2) | ✅ **MPP, bout à bout** | **30 img/s, 133 % CPU**, 71 °C | 51 img/s (60 décodées) | ✅ **57 img/s** en 1080p60 |
+| **Cette recette** : kbase + libmali + Xorg Rockchip + Chromium Radxa 126 (GPU bloqué à 166 MHz) | Mali (libmali, GLES 3.2) | ✅ **MPP, bout à bout** | **30 img/s, 133 % CPU**, 71 °C | 51 img/s (60 décodées) | ✅ **57 img/s** en 1080p60 |
+| **… + correctif OPP + GPU à 800 MHz** (gouverneur `performance`) | idem | ✅ | 30 img/s | **58,1 img/s** | ✅ 55 img/s en 1080p60 · **29,3** en 4K30 |
 
 Le détail de chaque essai, avec les journaux et les impasses, est dans
 [`docs/recherche/test_chromium_radxa_126.md`](docs/recherche/test_chromium_radxa_126.md).
@@ -53,10 +55,12 @@ Le détail de chaque essai, avec les journaux et les impasses, est dans
 > arrêtent les services turbohq) et **changent de pilote GPU**. Chaque étape est
 > réversible, et `restaurer.sh` vérifie le retour à l'état initial.
 >
-> ⚠️ **Scripts réécrits le 30/09/2026 à partir des commandes mesurées ce jour-là**
-> (chemins regroupés sous `/opt/pxl-kiosk`). **Ils n'ont pas encore été rejoués tels
-> quels sur la box.** La séquence mesurée est consignée mot pour mot dans
-> `docs/recherche/test_chromium_radxa_126.md`.
+> ✅ **Rejoués tels quels sur la box le 30/09/2026** : 00 → 40, puis le banc. Durées :
+> 10 → 5 min, 20 → 11 min 30, 25 → 53 s.
+>
+> 🔴 **Ne jamais décharger kbase à chaud** (`rmmod bifrost_kbase`) : c'est un Oops du
+> noyau au modeset suivant (mesuré, détail dans `restaurer.sh`). Pour revenir à
+> Panfrost, **redémarrer**. `restaurer.sh` le fait, puis se relance pour vérifier.
 
 ```bash
 git clone https://github.com/DeeJayMX/PXL-Kiosk-RK3566 && cd PXL-Kiosk-RK3566
@@ -67,7 +71,8 @@ sudo scripts/25-installer-pile.sh      # libmali, Chromium, libv4l-rkmpp, libv4l
 sudo scripts/30-basculer-kbase.sh      # coupe l'affichage, Panfrost → kbase
 sudo scripts/40-lancer-kiosque.sh https://ma.page/ 1920x1080
 # … et pour revenir en arrière :
-sudo scripts/restaurer.sh              # --tout pour effacer aussi /opt/pxl-kiosk
+sudo scripts/restaurer.sh              # purge, puis REDÉMARRE si kbase est chargé
+sudo scripts/restaurer.sh              # après le redémarrage : vérifie le retour à l'identique
 ```
 
 **Vérifier que c'est bien accéléré**, et non un repli silencieux :
@@ -91,7 +96,7 @@ redémarrage est donc aussi un retour garanti à Panfrost.
   présentées, décodées, perdues et avance réelle ;
 - `mesurer-serie.sh` : les 4 clips, plus CPU, température et **sessions MPP**.
 
-Mesures du 30/09/2026 (sortie HDMI 1080p60, **GPU à 166 MHz**) :
+Mesures du 30/09/2026 (sortie HDMI 1080p60). Premier passage, **GPU à 166 MHz** :
 
 | Clip | Présentées/s | Décodées/s | CPU (sur 400 %) | Temp. |
 |---|---|---|---|---|
@@ -100,13 +105,33 @@ Mesures du 30/09/2026 (sortie HDMI 1080p60, **GPU à 166 MHz**) :
 | HEVC 1080p60 | 57,0 | **59,9** | 174 % | 72 °C |
 | HEVC 2160p30 | 23,0 | **30,0** | 137 % | 72 °C |
 
+Rejeu du dépôt, **correctif OPP actif** :
+
+| Clip | `simple_ondemand` (200-800 MHz) | `performance` (800 MHz fixe) |
+|---|---|---|
+| H.264 1080p30 | 29,9 img/s, 148 % CPU, 78 °C | — |
+| H.264 1080p60 | 49,3 | **58,1** |
+| HEVC 1080p60 | 53,3 | **55,3** |
+| HEVC 2160p30 | **29,3** (au lieu de 23,0) | — |
+
+⇒ Le gouverneur par défaut monte trop tard (sondage toutes les 50 ms) : pendant les
+60p, le GPU passe l'essentiel du temps entre 300 et 400 MHz. **Pour un kiosque vidéo :
+gouverneur `performance`** (ou `min_freq` relevé) sur `/sys/class/devfreq/fde60000.gpu`.
+La température monte à 78-81 °C, près du bridage à 85 °C : à surveiller dans le boîtier.
+
 ## 5. Ce qui reste
 
-1. **🔴 Le GPU est figé à 166 MHz sous kbase** : `no supported OPPs`, donc pas de
-   devfreq. Sous Panfrost il monte à 800 MHz. C'est le premier suspect des images
-   perdues en 60p et en 4K. Pistes : un overlay DT qui retire `opp-supported-hw`, ou
-   un kbase qui fournit `supported_hw`. Voir
-   [`docs/recherche/pile_libmali_x11_rk356x.md`](docs/recherche/pile_libmali_x11_rk356x.md).
+1. ✅ **GPU débloqué** (30/09) par `patches/kbase-opp-ophub.patch`. Il y avait deux
+   causes :
+   - la table du DT ophub déclare `rockchip,supported-hw` sans qu'aucune entrée ne
+     porte `opp-supported-hw` : le noyau 6.1 les rejette alors toutes ;
+   - l'horloge s'y nomme `gpu`, là où le pilote demande `clk_mali` (nom du DT
+     Android/Rockchip).
+
+   Le correctif retire la propriété de la **copie en mémoire** du DT et prend
+   l'horloge `gpu`. Le `.dtb` sur disque n'est pas touché. Référence Android (même
+   box) : table 200-700 MHz, chaque entrée portant `opp-supported-hw = <0xfb 0xffff>`.
+   Reste à faire : **garder le 60p à 60** (gouverneur, et le dernier écart côté X11).
 2. **libmali g29p1**, exactement appariée au kbase : elle existe dans les paquets du
    SDK Rockchip (miroir GitLab `rk3588_linux`). À essayer à la place de la g13p0.
 3. **X11 n'offre aucun overlay vidéo** : la vidéo reste composée par le GPU. Pour une
