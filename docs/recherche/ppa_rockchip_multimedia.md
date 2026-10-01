@@ -98,3 +98,36 @@ Pas encore de point de comparaison mesuré au même banc (X11/libmali, Pi 5).
 À la remise en état, `pkill -f "/opt/pxl-noble"` a tué **la session ssh qui l'exécutait** : la chaîne figurait
 dans sa propre ligne de commande. C'est le piège du hook `pas-de-pkill-f` de PXL-Switcher. On arrête par
 `systemctl stop <unité>`, jamais par `pkill -f`.
+
+### Sortie en 25p avec le serveur Node sur la box — mesuré le 01/10/2026
+
+Question d'Eliott : limiter Chromium à 25 img/s, avec le serveur d'habillage sur la même box.
+
+Montage :
+- la sortie HDMI est réglée en **1920×1080@25** (`weston.ini`). La TV le déclare, et Chromium se cale sur la
+  cadence de l'écran : il n'existe pas de drapeau pour plafonner Chromium ;
+- serveur d'essai `serveur.js` actif ;
+- banc `scripts/banc/serie-weston-hz.sh <Hz>`. Un **accroc** y est un écart supérieur à 1,5 image : 60 ms en
+  25p, 25 ms en 60p.
+
+| | 25p : img/s | 25p : accrocs | 60p : img/s | 60p : accrocs |
+|---|---|---|---|---|
+| bandeau · vitesse · lieu · portique · départs | 25,1 à 25,4 | **0** | 54,7 à 58,5 | 2 à 8 |
+| chronos · classement · classement centré · dénivelé | 24,0 à 25,0 | 0 à 2 | 47,2 à 57,3 | 8 à 29 |
+| tête de course · carte | 23,0 · 24,4 | 2 · 4 | 47,0 · 51,0 | 10 · 45 |
+| **séquence complète (6 éléments)** | **22,9** | **24** | 41,4 | **123** |
+
+Charge processeur, sur 400 % (4 cœurs) :
+
+| | 25p | 60p |
+|---|---|---|
+| Chromium, séquence | **107 %** | 168 % |
+| Chromium, éléments seuls | 27 à 75 % | 49 à 134 % |
+| serveur Node | **18 à 26 %** (repos : 23 %) | 19 à 24 % |
+| box entière, au pire | **145 / 400** | 204 / 400 |
+
+Température : 69-71 °C en 25p, 71-74 °C en 60p.
+
+⇒ **En 25p, un élément seul est fluide**, à 0-4 accroc pour ~9 s. La séquence complète garde des accrocs, à
+peu près 9 % des images, contre ~26 % en 60p. Ils viennent sans doute de l'entrée simultanée des 6 éléments,
+qui fait un pic de mise en page (déduit). Le serveur Node coûte un cinquième de cœur et ne gêne pas.

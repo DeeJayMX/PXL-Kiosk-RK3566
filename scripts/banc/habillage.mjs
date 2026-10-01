@@ -30,6 +30,18 @@ function cpuChromium() { let s = 0;
     try { const st = readFileSync(`/proc/${d}/stat`, 'utf8'); if (!/\((chromium|chrome)/.test(st)) continue;
       const f = st.slice(st.lastIndexOf(')') + 2).split(' '); s += +f[11] + +f[12]; } catch {} }
   return s; }
+// CPU cumulé (jiffies) du serveur d'habillage (processus dont la ligne de commande contient serveur.js).
+function cpuServeur() { let s = 0;
+  for (const d of readdirSync('/proc')) { if (!/^\d+$/.test(d)) continue;
+    try { if (!readFileSync(`/proc/${d}/cmdline`, 'utf8').includes('serveur.js')) continue;
+      const st = readFileSync(`/proc/${d}/stat`, 'utf8'); const f = st.slice(st.lastIndexOf(')') + 2).split(' ');
+      s += +f[11] + +f[12]; } catch {} }
+  return s; }
+// CPU total de la machine (jiffies occupés, tous cœurs) depuis /proc/stat.
+function cpuTotal() { const f = readFileSync('/proc/stat', 'utf8').split('\n')[0].trim().split(/\s+/).slice(1).map(Number);
+  return f[0] + f[1] + f[2] + f[5] + f[6] + f[7]; }
+// Seuil d'accroc : 1,5 image à la cadence de sortie (SORTIE_HZ, 60 par défaut) — 25 ms à 60 Hz, 60 ms à 25 Hz.
+const SEUIL = 1.5 * 1000 / (+process.env.SORTIE_HZ || 60);
 const lire = f => { try { return readFileSync(f, 'utf8').trim(); } catch { return ''; } };
 
 async function mesurer(nom, avant, pendantMs, apres = null, apresMs = 0) {
@@ -37,7 +49,7 @@ async function mesurer(nom, avant, pendantMs, apres = null, apresMs = 0) {
   await ev(RAF);
   await cmd('Tracing.start', { categories: 'disabled-by-default-devtools.timeline.frame,benchmark,viz', transferMode: 'ReportEvents' });
   await attendre(300);
-  const c0 = cpuChromium(), t0 = Date.now(); const gpu = [];
+  const c0 = cpuChromium(), s0 = cpuServeur(), k0 = cpuTotal(), t0 = Date.now(); const gpu = [];
   const echant = setInterval(() => { const l = lire(`${G}/load`); if (l) gpu.push(l); }, 250);
   await ev('window.__g.length=0');
   for (const p of avant) await api(p);
@@ -45,6 +57,7 @@ async function mesurer(nom, avant, pendantMs, apres = null, apresMs = 0) {
   if (apres) { for (const p of apres) await api(p); await attendre(apresMs); }
   clearInterval(echant);
   const dt = (Date.now() - t0) / 1000, cpu = (cpuChromium() - c0) / 100 / dt * 100;
+  const cpuSrv = (cpuServeur() - s0) / 100 / dt * 100, cpuTot = (cpuTotal() - k0) / 100 / dt * 100;
   const g = (await ev('window.__g.slice(1)')) || [];
   await new Promise(r => { finTrace = r; cmd('Tracing.end'); });
   // Trace : images dessinées par viz, états du rapporteur de pipeline.
@@ -58,10 +71,10 @@ async function mesurer(nom, avant, pendantMs, apres = null, apresMs = 0) {
   const actifS = dg.reduce((a, x) => a + x, 0) / 1000;
   const r = { scenario: nom, secondes: +dt.toFixed(1),
     raf_par_s: +(g.length / dt).toFixed(1), raf_p50_ms: q(.5), raf_p95_ms: q(.95), raf_max_ms: q(1),
-    raf_accrocs_sup_25ms: g.filter(x => x > 25).length,
+    raf_accrocs: g.filter(x => x > SEUIL).length,
     draw_total: draws.length, draw_actif_s: +actifS.toFixed(1), draw_ips_en_animation: actifS ? +(dg.length / actifS).toFixed(1) : null,
-    draw_ecarts_sup_25ms: dg.filter(x => x > 25).length,
-    pipeline: etats, cpu_chromium_pct: +cpu.toFixed(0), gpu_charge_moy: moy(load), gpu_charge_max: load.length ? Math.max(...load) : null,
+    draw_accrocs: dg.filter(x => x > SEUIL).length, seuil_ms: +SEUIL.toFixed(0),
+    pipeline: etats, cpu_chromium_pct: +cpu.toFixed(0), cpu_serveur_pct: +cpuSrv.toFixed(0), cpu_total_pct_sur_400: +cpuTot.toFixed(0), gpu_charge_moy: moy(load), gpu_charge_max: load.length ? Math.max(...load) : null,
     gpu_mhz_moy: moy(freq), temp_c: +(+lire('/sys/class/thermal/thermal_zone0/temp') / 1000).toFixed(0) };
   console.log(JSON.stringify(r));
   return r;
