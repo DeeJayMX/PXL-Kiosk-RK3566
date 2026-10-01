@@ -62,6 +62,9 @@ grep -qa rk356 /proc/device-tree/compatible || dire "⚠️ pas une RK356x (comp
 [ -c /dev/mpp_service ] || dire "⚠️ /dev/mpp_service absent : noyau sans MPP Rockchip, pas de décodage vidéo matériel (la preview marche quand même)"
 if [ $EN_LIGNE = 1 ]; then hostnamectl set-hostname "$NOM_MACHINE"
 else echo "$NOM_MACHINE" > /etc/hostname; sed -i "s/^127\.0\.1\.1.*/127.0.1.1 $NOM_MACHINE/" /etc/hosts; fi
+# Fuseau : le serveur d'habillage affiche l'heure LOCALE ; l'image ophub arrive en Asia/Shanghai (vu le 01/10).
+FUSEAU=${FUSEAU:-Europe/Paris}
+ln -sfn "/usr/share/zoneinfo/$FUSEAU" /etc/localtime && echo "$FUSEAU" > /etc/timezone
 
 # ---- 1. paquets : PPA Rockchip + pile d'affichage -----------------------------------------------
 export DEBIAN_FRONTEND=noninteractive

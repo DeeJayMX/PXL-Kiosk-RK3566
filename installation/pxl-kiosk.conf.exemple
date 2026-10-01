@@ -5,6 +5,8 @@
 
 # Nom de la machine (hostname et nom sur le tailnet)
 NOM_MACHINE=pxl-habillage
+# Fuseau horaire (le serveur d'habillage affiche l'heure locale)
+FUSEAU=Europe/Paris
 
 # --- Le serveur d'habillage (le travail CRITIQUE : vMix en dépend) ---------------------------------
 # D'où vient l'application : un dossier local (copié) ou une URL git (clonée, puis mise à jour par pull).
