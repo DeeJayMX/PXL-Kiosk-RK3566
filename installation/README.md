@@ -43,6 +43,8 @@ TS_AUTHKEY=tskey-… bash installation/installer.sh
 | `pxl-preview` | Weston + Chromium sur `$PREVIEW_URL`, profil en mémoire | **basse** : `Nice=10`, `CPUWeight=50`, tué en premier si la mémoire manque |
 | `pxl-sante` | `:$SANTE_PORT/sante` (JSON) et `/sante.txt` (lisible) : températures, charge, mémoire, disque, GPU, services et relances, `/api/sante` du serveur | — |
 | `seatd` | accès DRM et entrées pour Weston, sans session de bureau | — |
+| `pxl-facade` | afficheur HT1628 : heure, pictogrammes LAN/Wi-Fi ; messages par `/run/turbohq-facade` | — |
+| `pxl-telecommande` | **OK** = recharger la preview (`rELd`) · **Menu/Accueil** = IP sur la façade · **Power maintenu 3 s** = redémarrer (3-2-1, `boot`). Télécommande IR **et** TV par HDMI-CEC ; ces touches sont **retirées à Weston/Chromium et à logind** (sinon « Retour » quittait la preview et « Power » éteignait la box) | — |
 
 Les trois services `pxl-*` sont relancés seuls (`Restart=always`). Si la preview tombe, le serveur continue.
 

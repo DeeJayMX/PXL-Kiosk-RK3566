@@ -50,3 +50,37 @@ EOF
 else
   dire "⚠️ pas de ht1628 sur la source — façade non installée"
 fi
+
+# ── Télécommande : table des touches de CETTE box, puis les gestes (pxl-telecommande) ─────────────────────
+ICI=$(cd "$(dirname "$0")" && pwd)
+if [ -f "$SRC/etc/rc_keymaps/pxl-turbonode.toml" ]; then
+  mkdir -p "$CIBLE/etc/rc_keymaps"
+  cp "$SRC/etc/rc_keymaps/pxl-turbonode.toml" "$CIBLE/etc/rc_keymaps/"
+  # Relevée dans le DTB Android d'origine ; remplace rc-beelink-gs1 que le DTS ophub pose faute de mieux.
+  grep -q "pxl-turbonode.toml" "$CIBLE/etc/rc_maps.cfg" 2>/dev/null \
+    || printf '# PXL : table de la X88 Pro 20 (en-tête de pxl-turbonode.toml)\n*\trc-beelink-gs1\tpxl-turbonode.toml\n' >> "$CIBLE/etc/rc_maps.cfg"
+  dire "télécommande : table de touches pxl-turbonode posée"
+fi
+install -m 644 "$ICI/fichiers/telecommande.mjs" "$CIBLE/usr/local/lib/pxl-kiosk/telecommande.mjs"
+# Les télécommandes (IR, TV par CEC) ne parlent plus à Weston/Chromium, et ne sont plus des « boutons d'arrêt »
+# pour logind : « Retour » quittait la preview, « Power » (IR ou TV) éteignait la box.
+cat > "$CIBLE/etc/udev/rules.d/90-pxl-telecommande.rules" <<'REGLE'
+SUBSYSTEM=="input", KERNEL=="event*", ATTRS{name}=="gpio_ir_recv|dw_hdmi|hdmi_cec_key|bt-powerkey", ENV{LIBINPUT_IGNORE_DEVICE}="1", TAG-="power-switch"
+REGLE
+mkdir -p "$CIBLE/etc/systemd/logind.conf.d"
+printf '[Login]\nHandlePowerKey=ignore\nHandlePowerKeyLongPress=ignore\n' > "$CIBLE/etc/systemd/logind.conf.d/pxl-telecommande.conf"
+cat > "$CIBLE/etc/systemd/system/pxl-telecommande.service" <<'UNITE'
+[Unit]
+Description=PXL — télécommande : OK recharge la preview, Menu montre l'IP, Power 3 s redémarre
+After=systemd-udevd.service pxl-preview.service
+
+[Service]
+ExecStart=/opt/node/bin/node /usr/local/lib/pxl-kiosk/telecommande.mjs
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+UNITE
+ln -sfn /etc/systemd/system/pxl-telecommande.service "$CIBLE/etc/systemd/system/multi-user.target.wants/pxl-telecommande.service"
+dire "télécommande : gestes posés (pxl-telecommande), touches retirées à Weston/Chromium et à logind"
