@@ -11,6 +11,7 @@
 # SANS_XZ=1 : s'arrête avant la compression ; puis, plus tard (par ex. quand la clé Tailscale est prête) :
 #   TS_AUTHKEY=tskey-… [TS_TAGS=tag:…] bash fabriquer-image.sh --finir /opt/pxl-image/<nom>.img
 #   (pose la clé et le tag, compresse ; l'.img est GARDÉE, on peut refinir)
+#   MATERIEL=1 avec --finir : ajoute aussi le Wi-Fi et la façade (materiel-x88pro20.sh) à une image déjà faite
 # Ce que l'image NE porte PAS, et qui naît au premier démarrage : clés SSH, machine-id, inscription Tailscale.
 # TS_AUTHKEY : préférer une clé À USAGE UNIQUE, expirant vite, taguée — elle est effacée dès qu'elle a servi.
 set -euo pipefail
@@ -35,6 +36,7 @@ if [ "${1:-}" = --finir ]; then
   mount "${L}p2" "$M"
   if [ -n "${TS_AUTHKEY:-}" ]; then ( umask 077; printf '%s' "$TS_AUTHKEY" > "$M/etc/pxl-kiosk/ts-authkey" ); dire "clé Tailscale posée"; fi
   install -m 755 "$ICI/fichiers/premier-demarrage.sh" "$M/usr/local/lib/pxl-kiosk/premier-demarrage.sh"   # dernière version
+  [ "${MATERIEL:-}" = 1 ] && bash "$ICI/materiel-x88pro20.sh" "$M" /   # Wi-Fi + façade, repris de l'hôte
   [ -n "${TS_TAGS+x}" ] && { sed -i "s|^TS_TAGS=.*|TS_TAGS=$TS_TAGS|" "$M/etc/pxl-kiosk.conf"; dire "TS_TAGS=$TS_TAGS"; }
   umount "$M"; losetup -d "$L"; rmdir "$M"
   compresser "$IMG"; exit 0
@@ -92,6 +94,8 @@ dire "installer.sh dans l'image (paquets, Node, services)…"
 chroot "$R" env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin HOME=/root TS_AUTHKEY="${TS_AUTHKEY:-}" \
   bash /opt/pxl-kiosk-installation/installer.sh
 
+dire "matériel X88 Pro 20 (Wi-Fi SeekWave, façade HT1628), repris de l'hôte…"
+bash "$ICI/materiel-x88pro20.sh" "$R" /
 dire "finitions propres à l'image…"
 rm -f "$R/root/.not_logged_in_yet"                      # assistant de première connexion d'Armbian : personne au clavier
 [ -n "${ROOT_MDP:-}" ] && echo "root:$ROOT_MDP" | chroot "$R" chpasswd

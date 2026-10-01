@@ -19,6 +19,7 @@ Mesurée en chroot sur la TurboNode le 01/10/2026 : [`docs/recherche/ppa_rockchi
 | Navigateur | **Chromium 132 rkmpp** (MPP + Wayland) du PPA `liujianfeng1994/rockchip-multimedia`, avec `rockchip-multimedia-config` (pose `/dev/video-dec0` et la libv4l patchée) |
 | Serveur | **Node 22 officiel** (nodejs.org, empreinte vérifiée) |
 | Accès distant | **Tailscale officiel** avec `--ssh` |
+| Matériel X88 Pro 20 | **Wi-Fi SeekWave SWT6621S** (pilotes hors arbre + firmwares de cette box) et **afficheur de façade HT1628** (heure, pictogrammes LAN / Wi-Fi) — absents de l'image ophub, repris d'une box qui les a par `materiel-x88pro20.sh` (sources : PXL-TurboHQ, `TurboNode/WIFI_SEEKWAVE.md`, `TurboNode/noeud/ht1628.c`) |
 
 ## Installer
 
