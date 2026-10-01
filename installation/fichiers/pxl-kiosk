@@ -17,7 +17,7 @@ case "${1:-etat}" in
       rsync -a --delete --exclude .git --exclude etat-local --exclude node_modules "$APP_SOURCE/" "$APP_DIR/"
     fi
     chown -R pxl:pxl "$APP_DIR"
-    systemctl restart pxl-serveur && echo "serveur relancé" ;;
+    if [ -d /run/systemd/system ]; then systemctl restart pxl-serveur && echo "serveur relancé"; fi ;;
   redemarrer)
     case "${2:-tout}" in
       serveur) systemctl restart pxl-serveur ;; preview) systemctl restart pxl-preview ;;

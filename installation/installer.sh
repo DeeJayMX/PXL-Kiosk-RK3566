@@ -8,6 +8,9 @@
 # Idempotent : se relance sans dommage (mise à jour de la pile, de l'application, des services).
 #   installer.sh --verifier     ne refait rien, vérifie seulement
 #
+# Fonctionne aussi DANS UNE IMAGE (chroot, sans systemd en marche — fabriquer-image.sh) : rien n'est démarré,
+# tout est seulement activé, et Tailscale rejoint le tailnet au PREMIER DÉMARRAGE de la box.
+#
 # La pile (mesurée en chroot sur la TurboNode le 01/10/2026, docs/recherche/ppa_rockchip_multimedia.md) :
 #   Panfrost (pilote libre du noyau) + Mesa de noble · Weston kiosk-shell · Chromium 132 rkmpp du PPA
 #   liujianfeng1994/rockchip-multimedia (MPP + Wayland) · Node 22 officiel · Tailscale officiel.
@@ -22,6 +25,7 @@ meurs() { echo "🔴 $*" >&2; exit 1; }
 . /etc/os-release
 PPA=liujianfeng1994/rockchip-multimedia
 LIB=/usr/local/lib/pxl-kiosk
+EN_LIGNE=1; [ -d /run/systemd/system ] || EN_LIGNE=0   # 0 = dans une image en fabrication
 
 verifier() {
   local ok=0
@@ -56,7 +60,8 @@ verifier() {
 [ "$(uname -m)" = aarch64 ] || meurs "arm64 requis"
 grep -qa rk356 /proc/device-tree/compatible || dire "⚠️ pas une RK356x (compatible : $(tr '\0' ' ' < /proc/device-tree/compatible)) — on continue"
 [ -c /dev/mpp_service ] || dire "⚠️ /dev/mpp_service absent : noyau sans MPP Rockchip, pas de décodage vidéo matériel (la preview marche quand même)"
-hostnamectl set-hostname "$NOM_MACHINE"
+if [ $EN_LIGNE = 1 ]; then hostnamectl set-hostname "$NOM_MACHINE"
+else echo "$NOM_MACHINE" > /etc/hostname; sed -i "s/^127\.0\.1\.1.*/127.0.1.1 $NOM_MACHINE/" /etc/hosts; fi
 
 # ---- 1. paquets : PPA Rockchip + pile d'affichage -----------------------------------------------
 export DEBIAN_FRONTEND=noninteractive
@@ -96,8 +101,13 @@ if ! command -v tailscale >/dev/null; then
   curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/noble.tailscale-keyring.list > /etc/apt/sources.list.d/tailscale.list
   apt-get update -qq && apt-get install -y -qq tailscale >/dev/null
 fi
-systemctl enable -q --now tailscaled
-if [ -n "${TS_AUTHKEY:-}" ]; then
+systemctl enable -q tailscaled
+mkdir -p /etc/pxl-kiosk
+if [ $EN_LIGNE = 0 ]; then
+  # Dans l'image : la clé attend le premier démarrage (pxl-premier-demarrage), qui l'utilise puis l'efface.
+  [ -n "${TS_AUTHKEY:-}" ] && { ( umask 077; printf '%s' "$TS_AUTHKEY" > /etc/pxl-kiosk/ts-authkey ); dire "clé Tailscale posée pour le premier démarrage"; }
+elif [ -n "${TS_AUTHKEY:-}" ]; then
+  systemctl start tailscaled
   tailscale up --auth-key="$TS_AUTHKEY" --hostname="$NOM_MACHINE" --ssh ${TS_TAGS:+--advertise-tags=$TS_TAGS}
 else
   tailscale status >/dev/null 2>&1 || dire "⚠️ Tailscale non connecté : relancer avec TS_AUTHKEY=… (ou « tailscale up --ssh » à la main)"
@@ -110,6 +120,7 @@ mkdir -p "$LIB" /etc/pxl-kiosk "$APP_DIR"
 install -m 755 "$ICI/fichiers/preview.sh" "$LIB/preview.sh"
 install -m 644 "$ICI/fichiers/sante.mjs"  "$LIB/sante.mjs"
 install -m 755 "$ICI/fichiers/pxl-kiosk"  /usr/local/bin/pxl-kiosk
+install -m 755 "$ICI/fichiers/premier-demarrage.sh" "$LIB/premier-demarrage.sh"
 cat > /etc/pxl-kiosk/weston.ini <<EOF
 [core]
 shell=kiosk-shell.so
@@ -179,6 +190,18 @@ Nice=5
 [Install]
 WantedBy=multi-user.target
 EOF
+cat > /etc/systemd/system/pxl-premier-demarrage.service <<EOF
+[Unit]
+Description=PXL — premier démarrage (clés SSH propres à la box, entrée dans le tailnet)
+After=network-online.target tailscaled.service
+Wants=network-online.target
+Before=ssh.service
+[Service]
+Type=oneshot
+ExecStart=$LIB/premier-demarrage.sh
+[Install]
+WantedBy=multi-user.target
+EOF
 # seatd donne l'accès DRM/entrées à Weston sans session de bureau. Le paquet Ubuntu fournit l'unité ; sinon on la pose.
 if ! systemctl cat seatd.service >/dev/null 2>&1; then
   printf '[Unit]\nDescription=seatd\n[Service]\nExecStart=/usr/bin/seatd -g video\nRestart=always\n[Install]\nWantedBy=multi-user.target\n' > /etc/systemd/system/seatd.service
@@ -189,10 +212,10 @@ printf '[Service]\nExecStart=\nExecStart=/usr/bin/seatd -g video\n' > /etc/syste
 # ---- 6. robustesse « car régie » ---------------------------------------------------------------
 # Pas de bureau ni d'écran de connexion : la box démarre directement sur la preview.
 systemctl set-default -q multi-user.target
-for dm in gdm3 lightdm sddm; do systemctl disable -q --now "$dm" 2>/dev/null || true; done
-systemctl disable -q --now getty@tty1 2>/dev/null || true
+couper() { for u in "$@"; do systemctl disable -q "$u" 2>/dev/null || true; [ $EN_LIGNE = 1 ] && systemctl stop "$u" 2>/dev/null || true; done; }
+couper gdm3 lightdm sddm getty@tty1
 # Aucune mise à jour automatique pendant une exploitation : on met à jour quand on le décide (installer.sh).
-systemctl disable -q --now unattended-upgrades apt-daily.timer apt-daily-upgrade.timer 2>/dev/null || true
+couper unattended-upgrades apt-daily.timer apt-daily-upgrade.timer
 # Journal persistant mais borné (une coupure de courant ne doit pas effacer la cause de la panne).
 mkdir -p /etc/systemd/journald.conf.d
 printf '[Journal]\nStorage=persistent\nSystemMaxUse=200M\n' > /etc/systemd/journald.conf.d/pxl.conf
@@ -203,10 +226,14 @@ if [ -e /dev/watchdog ] || [ -e /dev/watchdog0 ]; then
 fi
 
 # ---- 7. application, puis démarrage -----------------------------------------------------------
-systemctl daemon-reload
-systemctl restart systemd-journald
+[ $EN_LIGNE = 1 ] && { systemctl daemon-reload; systemctl restart systemd-journald; }
 dire "application depuis $APP_SOURCE…"
 /usr/local/bin/pxl-kiosk maj-app >/dev/null || meurs "copie de l'application impossible"
+if [ $EN_LIGNE = 0 ]; then
+  systemctl enable -q seatd pxl-serveur pxl-preview pxl-sante pxl-premier-demarrage
+  dire "✅ image préparée — tout démarrera au premier démarrage de la box"; exit 0
+fi
+systemctl enable -q pxl-premier-demarrage
 udevadm trigger --subsystem-match=misc --action=change 2>/dev/null || true   # pose /dev/video-dec0 tout de suite
 systemctl enable -q seatd pxl-serveur pxl-preview pxl-sante
 systemctl restart seatd pxl-serveur pxl-sante
