@@ -7,7 +7,10 @@ import { readFileSync, readdirSync } from 'node:fs';
 const SRV = process.env.SRV || 'http://127.0.0.1:8799';
 const G = '/sys/class/devfreq/fde60000.gpu';
 const attendre = ms => new Promise(r => setTimeout(r, ms));
-const api = p => fetch(SRV + p).then(r => r.text()).catch(e => 'ERR ' + e.message);
+// PAGE=preview : la page de préparation n'affiche que le PRÉPARÉ — on arme et on désarme au lieu d'envoyer.
+const PREVIEW = process.env.PAGE === 'preview';
+const versPreview = p => !PREVIEW ? p : p.replace('/take', '/arm').replace(/\/clear$/, '/disarm').replace('/api/clear-all', '/api/disarm-all');
+const api = p => fetch(SRV + versPreview(p)).then(r => r.text()).catch(e => 'ERR ' + e.message);
 
 const tabs = await (await fetch('http://127.0.0.1:9222/json')).json();
 const page = tabs.find(t => t.type === 'page');
@@ -100,6 +103,8 @@ const S = {
 };
 const choix = process.argv.slice(2).length ? process.argv.slice(2) : Object.keys(S);
 await cmd('Page.reload'); await attendre(6000);
+// JS_INIT : expression évaluée dans la page après chargement (essai d'une variante sans toucher au code de la page).
+if (process.env.JS_INIT) console.log('js_init', await ev(process.env.JS_INIT));
 await api('/api/clear-all'); await attendre(3000);
 for (const k of choix) { const [a, t, b, tb] = S[k]; await mesurer(k, a, t, b, tb); await attendre(1500); }
 await api('/api/clear-all');

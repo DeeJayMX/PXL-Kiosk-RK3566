@@ -131,3 +131,30 @@ Température : 69-71 °C en 25p, 71-74 °C en 60p.
 ⇒ **En 25p, un élément seul est fluide**, à 0-4 accroc pour ~9 s. La séquence complète garde des accrocs, à
 peu près 9 % des images, contre ~26 % en 60p. Ils viennent sans doute de l'entrée simultanée des 6 éléments,
 qui fait un pic de mise en page (déduit). Le serveur Node coûte un cinquième de cœur et ne gêne pas.
+
+### La page `/preview` en 25p — mesuré le 01/10/2026
+
+Rôle précisé par Eliott : **l'écran de la box ne sert que de preview**. La box fait le serveur et sert les pages à
+vMix, qui rend lui-même le PGM.
+
+Banc en `PAGE=preview` : les éléments sont **préparés** (`/arm`) au lieu d'être envoyés, puisque la preview
+n'affiche que ce qui est préparé et pas encore parti.
+
+| Élément | img/s | accrocs | CPU chromium |
+|---|---|---|---|
+| chronos · bandeau · vitesse · lieu | 22,6 à 24,0 | 2 à 3 | 29 à 38 % |
+| dénivelé · tête · classement · classement centré · départs | 24,5 à 26,0 | 0 à 2 | 32 à 95 % |
+| **carte** | **19,2** | 40 | 91 % |
+| **séquence (6 éléments)** | **13,1** | 86 | 124 % |
+| portique | — (rien dessiné : élément non préparé par `arm?course=`) | | |
+
+Serveur : 17 à 19 %. Box entière : 154/400 au pire.
+⇒ La preview est **moins fluide que la page PGM** sur la carte et la séquence : 13,1 contre 22,9 img/s.
+
+🔴 **Hypothèse fausse, consignée** : j'ai attribué l'écart à la réduction d'échelle de la scène en mode préparation
+(`habillage.js` l. 104-109, `scale(0,963)` pour la bande de rappel). **Mesuré** en l'annulant par DevTools
+(`JS_INIT`, transformée `none`) : carte 18,3 → 18,1, séquence 13,4 → 13,6. **Aucun effet.** La cause reste
+**ouverte**.
+
+Piste non vérifiée : en préparation, l'élément suit le coureur **en direct** à chaque mise à jour du serveur, alors
+qu'à l'antenne il est **figé** au moment de l'envoi. La carte se redessinerait donc en continu.
