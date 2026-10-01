@@ -12,6 +12,11 @@ Mali-G52, 4 Go), sous Armbian bookworm (image ophub, noyau Rockchip `6.1.141-rk3
 > `patches/kbase-opp-ophub.patch`) : **58 img/s en H.264 1080p60** et **29,3 en HEVC 4K30**,
 > GPU fixé à 800 MHz.
 
+> ⭐⭐ **01/10/2026 — la voie retenue n'est plus celle du § 3.** Ubuntu noble + **Panfrost** + **Weston** + Chromium
+> 132 **rkmpp** du PPA d'amazingfate : 60 img/s **avec** bascule (triple tampon), sans rien compiler. **Installation
+> complète d'une box « serveur d'habillage + preview » : [`installation/`](installation/README.md).**
+> La recette X11/kbase ci-dessous reste comme relevé.
+
 ## État au 30/09/2026, 23 h 35
 
 | | |

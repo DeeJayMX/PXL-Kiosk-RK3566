@@ -1,0 +1,34 @@
+# /etc/pxl-kiosk.conf — réglages de la box « serveur d'habillage + preview ».
+# Copier en /etc/pxl-kiosk.conf, adapter, puis lancer installation/installer.sh.
+# Syntaxe shell (lu par installer.sh). Aucun secret ici : TS_AUTHKEY se passe en variable
+# d'environnement au moment de l'installation, il n'est jamais écrit sur le disque.
+
+# Nom de la machine (hostname et nom sur le tailnet)
+NOM_MACHINE=pxl-habillage
+
+# --- Le serveur d'habillage (le travail CRITIQUE : vMix en dépend) ---------------------------------
+# D'où vient l'application : un dossier local (copié) ou une URL git (clonée, puis mise à jour par pull).
+APP_SOURCE=/root/urban-trail-2026
+# Où elle vit sur la box (ses fichiers d'état etat-local/ y sont écrits)
+APP_DIR=/opt/pxl-app
+# Ce que node lance, depuis APP_DIR
+APP_CMD="serveur.js config.json"
+# Écoute : 0.0.0.0 pour que vMix et les autres postes du réseau y accèdent
+APP_HOST=0.0.0.0
+APP_PORT=8765
+# Variables d'environnement en plus pour le serveur, séparées par des espaces (ex. "REJOUER=… VITESSE=1")
+APP_ENV=""
+
+# --- La preview à l'écran de la box (secondaire : elle ne doit jamais gêner le serveur) ---------
+PREVIEW_URL=http://127.0.0.1:8765/preview
+# Sortie HDMI. 25p mesuré fluide pour un élément seul (01/10/2026) ; la TV doit déclarer ce mode.
+SORTIE_NOM=HDMI-A-1
+SORTIE_MODE=1920x1080@25
+
+# --- Santé -------------------------------------------------------------------------------------
+# Petit serveur JSON (température, charge, services, santé du serveur d'habillage)
+SANTE_PORT=8790
+
+# --- Tailscale (facultatif) ---------------------------------------------------------------------
+# Tags demandés à l'enregistrement (la clé doit les autoriser). Vide = pas de tag.
+TS_TAGS=tag:pxl-dev

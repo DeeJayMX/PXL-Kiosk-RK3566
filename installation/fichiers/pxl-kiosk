@@ -1,0 +1,28 @@
+#!/bin/bash
+# Commande d'exploitation de la box (installée en /usr/local/bin/pxl-kiosk).
+#   pxl-kiosk etat                  résumé : services, températures, santé du serveur d'habillage
+#   pxl-kiosk maj-app               recopie / met à jour l'application depuis APP_SOURCE, puis relance le serveur
+#   pxl-kiosk redemarrer [serveur|preview|tout]
+#   pxl-kiosk journal [serveur|preview|sante]   (suivi en direct)
+. /etc/pxl-kiosk.conf
+case "${1:-etat}" in
+  etat) curl -s "http://127.0.0.1:${SANTE_PORT:-8790}/sante.txt" || systemctl --no-pager status pxl-serveur pxl-preview ;;
+  maj-app)
+    [ "$(id -u)" = 0 ] || { echo "en root"; exit 1; }
+    if [[ "$APP_SOURCE" =~ ^(https?|git|ssh):// || "$APP_SOURCE" == *@*:* ]]; then
+      if [ -d "$APP_DIR/.git" ]; then git -C "$APP_DIR" pull --ff-only; else git clone "$APP_SOURCE" "$APP_DIR"; fi
+    else
+      [ -d "$APP_SOURCE" ] || { echo "APP_SOURCE introuvable : $APP_SOURCE"; exit 1; }
+      # etat-local/ appartient à la box (état de la régie) : jamais écrasé par une mise à jour
+      rsync -a --delete --exclude .git --exclude etat-local --exclude node_modules "$APP_SOURCE/" "$APP_DIR/"
+    fi
+    chown -R pxl:pxl "$APP_DIR"
+    systemctl restart pxl-serveur && echo "serveur relancé" ;;
+  redemarrer)
+    case "${2:-tout}" in
+      serveur) systemctl restart pxl-serveur ;; preview) systemctl restart pxl-preview ;;
+      tout) systemctl restart pxl-serveur pxl-preview ;; *) echo "serveur | preview | tout"; exit 1 ;;
+    esac ;;
+  journal) journalctl -f -u "pxl-${2:-serveur}" ;;
+  *) sed -n '2,6p' "$0"; exit 1 ;;
+esac
