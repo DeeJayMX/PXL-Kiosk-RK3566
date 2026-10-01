@@ -124,8 +124,11 @@ install -m 755 "$ICI/fichiers/preview.sh" "$LIB/preview.sh"
 install -m 644 "$ICI/fichiers/sante.mjs"  "$LIB/sante.mjs"
 install -m 755 "$ICI/fichiers/pxl-kiosk"  /usr/local/bin/pxl-kiosk
 install -m 755 "$ICI/fichiers/premier-demarrage.sh" "$LIB/premier-demarrage.sh"
+# require-input=false : sans clavier branché (télécommandes IR/CEC retirées à Weston), Weston refuse sinon de
+# démarrer (« failed to create input devices », mesuré sur la box le 02/10/2026).
 cat > /etc/pxl-kiosk/weston.ini <<EOF
 [core]
+require-input=false
 shell=kiosk-shell.so
 idle-time=0
 [shell]
@@ -206,11 +209,14 @@ ExecStart=$LIB/premier-demarrage.sh
 WantedBy=multi-user.target
 EOF
 # seatd donne l'accès DRM/entrées à Weston sans session de bureau. Le paquet Ubuntu fournit l'unité ; sinon on la pose.
+# Chemin LU, jamais écrit en dur : noble le met dans /usr/sbin, et /usr/bin/seatd faisait échouer seatd (203/EXEC)
+# en boucle, donc la preview — vécu au premier démarrage de la box, le 02/10/2026.
+SEATD=$(command -v seatd)
 if ! systemctl cat seatd.service >/dev/null 2>&1; then
-  printf '[Unit]\nDescription=seatd\n[Service]\nExecStart=/usr/bin/seatd -g video\nRestart=always\n[Install]\nWantedBy=multi-user.target\n' > /etc/systemd/system/seatd.service
+  printf '[Unit]\nDescription=seatd\n[Service]\nExecStart=%s -g video\nRestart=always\n[Install]\nWantedBy=multi-user.target\n' "$SEATD" > /etc/systemd/system/seatd.service
 fi
 mkdir -p /etc/systemd/system/seatd.service.d
-printf '[Service]\nExecStart=\nExecStart=/usr/bin/seatd -g video\n' > /etc/systemd/system/seatd.service.d/pxl.conf
+printf '[Service]\nExecStart=\nExecStart=%s -g video\n' "$SEATD" > /etc/systemd/system/seatd.service.d/pxl.conf
 
 # ---- 6. robustesse « car régie » ---------------------------------------------------------------
 # Pas de bureau ni d'écran de connexion : la box démarre directement sur la preview.
@@ -222,10 +228,19 @@ couper unattended-upgrades apt-daily.timer apt-daily-upgrade.timer
 # Journal persistant mais borné (une coupure de courant ne doit pas effacer la cause de la panne).
 mkdir -p /etc/systemd/journald.conf.d
 printf '[Journal]\nStorage=persistent\nSystemMaxUse=200M\n' > /etc/systemd/journald.conf.d/pxl.conf
+# Au premier démarrage, armbian-fix (ophub, lancé par armbian-firstrun) RÉGÉNÈRE le machine-id après le départ de
+# journald : celui-ci écrit sous l'ancien identifiant et `journalctl` ne trouve rien (vu le 02/10/2026). On le
+# relance alors, pour qu'il rouvre son journal sous le bon nom. Sans effet les démarrages suivants.
+mkdir -p /etc/systemd/system/armbian-firstrun.service.d
+printf '[Service]\nExecStartPost=-/bin/sh -c '"'"'test -d "/var/log/journal/$$(cat /etc/machine-id)" || systemctl restart systemd-journald'"'"'\n' \
+  > /etc/systemd/system/armbian-firstrun.service.d/pxl-journal.conf
 # Chien de garde matériel : si le noyau se fige, la box redémarre seule (et relance tout).
 if [ -e /dev/watchdog ] || [ -e /dev/watchdog0 ]; then
   mkdir -p /etc/systemd/system.conf.d
   printf '[Manager]\nRuntimeWatchdogSec=30s\nRebootWatchdogSec=2min\n' > /etc/systemd/system.conf.d/pxl-watchdog.conf
+  # Un seul maître du chien de garde : systemd. Le démon `watchdog` de l'image Armbian tournait à vide à côté, et
+  # son arrêt lance wd_keepalive, qui échoue (périphérique tenu) et met le système en « degraded » (vu le 02/10).
+  systemctl mask -q watchdog.service wd_keepalive.service 2>/dev/null || true
 fi
 
 # ---- 6 bis. l'heure : la box n'a PAS d'horloge sauvegardée (aucun /dev/rtc, mesuré sur la TurboNode le 01/10) ----
