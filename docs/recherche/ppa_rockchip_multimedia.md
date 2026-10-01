@@ -44,3 +44,57 @@ libv4l patchée, et un Chromium MPP **avec Wayland**.
 
 Essai à faire, sans réinstaller la box : un environnement noble en chroot sur la TurboNode, avec Mesa/Panfrost
 de noble, un compositeur (cage) et ce Chromium, puis le même banc. Aucun changement de pilote noyau.
+
+## Essai en chroot : Weston + Panfrost + Chromium 132 rkmpp — mesuré le 01/10/2026
+
+### Montage
+
+- Chroot Ubuntu 24.04.5 (`ubuntu-base`) dans `/opt/pxl-noble` (1,3 Go), monté par `/opt/pxl-noble-monter.sh`.
+- Noyau et pilote GPU de la box inchangés : **Panfrost**, pas de kbase. Mesa **25.2.8** (noble).
+- Paquets du PPA : `chromium 132 rkmpp`, `libv4l-rkmpp`, `libv4l` `+rkmpp1`, `librockchip-mpp1`.
+- **Weston 13** en `kiosk-shell`, sortie fixée à 1920×1080@60 par `weston.ini`. Lancé par `seatd-launch`.
+- ⚠️ `cage` 0.1.5 a été essayé d'abord. Il prend le mode préféré de la TV (2160p) et **plante** (assertion
+  wlroots `wlr_scene_output_layout_add_output`) quand on change de mode à chaud avec `wlr-randr`.
+- Rendu Chromium : `ANGLE (Mesa, Mali-G52 r1 (Panfrost), OpenGL ES 3.1)` ; Weston : `GL renderer: Mali-G52 r1
+  (Panfrost)`.
+
+### Résultats
+
+**Carré témoin** (`animation-temoin.mjs`) : **60,3 img/s**, écart médian 16,7 ms, **0** écart > 25 ms. Pendant
+l'animation, l'adresse balayée alterne entre **trois** tampons : bascule vraie, triple tampon. ⇒ Sous Weston, on
+a à la fois 60 img/s **et** la bascule, ce que Xorg ne donne pas (§ 5 de `test_habillage_urban_trail.md`).
+
+**Habillage Urban Trail** (`habillage.mjs`). Cette fois en **vrai plein écran 1080p** ; les mesures X11 portaient
+sur une fenêtre de 945×1060.
+
+| Élément | img/s en animation | CPU chromium |
+|---|---|---|
+| chronos | 57,8 | 70 % |
+| bandeau | 45,4 | 58 % |
+| vitesse | 47,2 | 51 % |
+| lieu | 56,3 | 51 % |
+| dénivelé | 54,1 | 140 % |
+| carte | 48,5 | 138 % |
+| tête de course | 46,4 | 96 % |
+| portique | 55,9 | 71 % |
+| classement | 54,1 | 80 % |
+| classement centré | 45,3 | 88 % |
+| départs | 58,5 | 61 % |
+| **séquence (6 éléments)** | **42,9** (X11 : 23,9 en recopie, 27,6 en bascule) | 170 % |
+
+GPU : 1 à 11 % de charge moyenne, 46 % au plus.
+
+**MotionMark 1.3.1** (`motionmark.mjs`, browserbench.org, 1920×1080, dpr 1) : **114,01 @ 45 fps ± 3,75 %**,
+en 362 s.
+
+| Multiply | Canvas Arcs | Leaves | Paths | Canvas Lines | Images | Design | Suits |
+|---|---|---|---|---|---|---|---|
+| 148,07 | 202,69 | 86,13 | 1570,56 | 1984,34 | 7,80 | 22,74 | 19,99 |
+
+Pas encore de point de comparaison mesuré au même banc (X11/libmali, Pi 5).
+
+### Erreur de manipulation, consignée
+
+À la remise en état, `pkill -f "/opt/pxl-noble"` a tué **la session ssh qui l'exécutait** : la chaîne figurait
+dans sa propre ligne de commande. C'est le piège du hook `pas-de-pkill-f` de PXL-Switcher. On arrête par
+`systemctl stop <unité>`, jamais par `pkill -f`.
