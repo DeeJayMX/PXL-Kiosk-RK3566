@@ -10,7 +10,7 @@ import { hostname, uptime, loadavg, totalmem, freemem } from 'node:os';
 const conf = Object.fromEntries(readFileSync('/etc/pxl-kiosk.conf', 'utf8').split('\n')
   .map(l => l.match(/^\s*([A-Z_]+)=("?)(.*)\2\s*$/)).filter(Boolean).map(m => [m[1], m[3]]));
 const PORT = +conf.SANTE_PORT || 8790;
-const SERVICES = ['pxl-serveur', 'pxl-preview', 'pxl-sante', 'seatd', 'tailscaled'];
+const SERVICES = ['pxl-serveur', 'pxl-preview', 'pxl-sante', 'pxl-facade', 'pxl-telecommande', 'pxl-relais', 'seatd', 'chrony', 'tailscaled'];
 const lire = f => { try { return readFileSync(f, 'utf8').trim(); } catch { return null; } };
 
 function temperatures() {

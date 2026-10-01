@@ -12,6 +12,8 @@
 #   TS_AUTHKEY=tskey-… [TS_TAGS=tag:…] bash fabriquer-image.sh --finir /opt/pxl-image/<nom>.img
 #   (pose la clé et le tag, compresse ; l'.img est GARDÉE, on peut refinir)
 #   WIFI_FICHIER=… : réseaux Wi-Fi à poser (lignes « SSID<TAB>mot de passe<TAB>priorité »), l'Ethernet reste prioritaire
+#   --retoucher /opt/pxl-image/<nom>.img : rejoue installer.sh + matériel dans une image DÉJÀ faite (même
+#   montage, mêmes finitions), sans re-télécharger ni re-décompresser ; clé Tailscale, Wi-Fi, appli et mot de passe gardés
 #   MATERIEL=1 avec --finir : ajoute aussi le Wi-Fi et la façade (materiel-x88pro20.sh) à une image déjà faite
 # Ce que l'image NE porte PAS, et qui naît au premier démarrage : clés SSH, machine-id, inscription Tailscale.
 # TS_AUTHKEY : préférer une clé À USAGE UNIQUE, expirant vite, taguée — elle est effacée dès qu'elle a servi.
@@ -77,11 +79,17 @@ if [ "${1:-}" = --finir ]; then
   umount "$M"; losetup -d "$L"; rmdir "$M"
   compresser "$IMG"; exit 0
 fi
-: "${IMAGE_URL:?}" "${CONF:?}" "${APP:?}"
-[ -f "$CONF" ] && [ -d "$APP" ] || meurs "CONF ou APP introuvable"
-TRAVAIL=${TRAVAIL:-/opt/pxl-image}; EN_PLUS_GO=${EN_PLUS_GO:-3}
-NOM=pxl-kiosk-$(basename "$IMAGE_URL" .img.gz | sed 's/^Armbian_//')-$(date +%Y%m%d)
-IMG=$TRAVAIL/$NOM.img; R=$TRAVAIL/racine; LOOP=
+RETOUCHE=
+if [ "${1:-}" = --retoucher ]; then
+  RETOUCHE=1; IMG=${2:?image .img}; [ -f "$IMG" ] || meurs "$IMG introuvable"
+  TRAVAIL=$(dirname "$IMG"); NOM=$(basename "$IMG" .img); R=$TRAVAIL/racine; LOOP=
+else
+  : "${IMAGE_URL:?}" "${CONF:?}" "${APP:?}"
+  [ -f "$CONF" ] && [ -d "$APP" ] || meurs "CONF ou APP introuvable"
+  TRAVAIL=${TRAVAIL:-/opt/pxl-image}; EN_PLUS_GO=${EN_PLUS_GO:-3}
+  NOM=pxl-kiosk-$(basename "$IMAGE_URL" .img.gz | sed 's/^Armbian_//')-$(date +%Y%m%d)
+  IMG=$TRAVAIL/$NOM.img; R=$TRAVAIL/racine; LOOP=
+fi
 
 nettoyer() {
   set +e
@@ -93,6 +101,9 @@ nettoyer() {
 trap nettoyer EXIT
 
 mkdir -p "$TRAVAIL" "$R"
+if [ -n "$RETOUCHE" ]; then
+  LOOP=$(losetup -fP --show "$IMG"); e2fsck -pf "${LOOP}p2" >/dev/null || true
+else
 GZ=$TRAVAIL/$(basename "$IMAGE_URL")
 [ -s "$GZ" ] || { dire "téléchargement de l'image ophub…"; curl -fL --retry 3 -o "$GZ.part" "$IMAGE_URL" && mv "$GZ.part" "$GZ"; }
 dire "décompression et agrandissement (+${EN_PLUS_GO} Go)…"
@@ -105,6 +116,7 @@ echo ", +" | sfdisk -q --no-reread -N 2 "$IMG"
 LOOP=$(losetup -fP --show "$IMG")
 e2fsck -pf "${LOOP}p2" >/dev/null || true
 resize2fs "${LOOP}p2" >/dev/null
+fi
 
 dire "montage (arbre esclave)…"
 mount "${LOOP}p2" "$R"
@@ -122,9 +134,11 @@ rm -f "$R/etc/resolv.conf"; cp /etc/resolv.conf "$R/etc/resolv.conf"
 
 dire "copie de la recette, de la configuration et de l'application…"
 rm -rf "$R/opt/pxl-kiosk-installation"; cp -r "$ICI" "$R/opt/pxl-kiosk-installation"
-rsync -a --delete --exclude .git --exclude etat-local --exclude node_modules "$APP/" "$R/opt/pxl-app-source/"
-cp "$CONF" "$R/etc/pxl-kiosk.conf"
-sed -i 's|^APP_SOURCE=.*|APP_SOURCE=/opt/pxl-app-source|' "$R/etc/pxl-kiosk.conf"
+if [ -z "$RETOUCHE" ]; then
+  rsync -a --delete --exclude .git --exclude etat-local --exclude node_modules "$APP/" "$R/opt/pxl-app-source/"
+  cp "$CONF" "$R/etc/pxl-kiosk.conf"
+  sed -i 's|^APP_SOURCE=.*|APP_SOURCE=/opt/pxl-app-source|' "$R/etc/pxl-kiosk.conf"
+fi
 
 dire "installer.sh dans l'image (paquets, Node, services)…"
 chroot "$R" env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin HOME=/root TS_AUTHKEY="${TS_AUTHKEY:-}" \
@@ -141,7 +155,8 @@ rm -f "$R"/etc/ssh/ssh_host_*                           # régénérées au prem
 rm -rf "$R/var/lib/tailscale"/*                         # aucune identité de nœud dans l'image
 chroot "$R" apt-get clean
 rm -f "$R/etc/resolv.conf"; [ -n "$RESOLV" ] && ln -s "$RESOLV" "$R/etc/resolv.conf"
-echo "$NOM — fabriquée le $(date -Is) depuis $(basename "$IMAGE_URL")" > "$R/etc/pxl-kiosk/image"
+if [ -n "$RETOUCHE" ]; then echo "retouchée le $(date -Is)" >> "$R/etc/pxl-kiosk/image"
+else echo "$NOM — fabriquée le $(date -Is) depuis $(basename "$IMAGE_URL")" > "$R/etc/pxl-kiosk/image"; fi
 
 nettoyer; LOOP=; trap - EXIT
 [ "${SANS_XZ:-}" = 1 ] && { dire "✅ $IMG prête, non compressée — finir avec : fabriquer-image.sh --finir $IMG"; exit 0; }

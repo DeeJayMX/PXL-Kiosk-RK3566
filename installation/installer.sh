@@ -83,7 +83,7 @@ apt-get update -qq
 dire "paquets (Chromium rkmpp, MPP, libv4l, Weston, seatd)…"
 apt-get install -y -qq --no-install-recommends \
   chromium chromium-sandbox libv4l-rkmpp libv4l-0t64 v4l-utils librockchip-mpp1 rockchip-multimedia-config \
-  weston seatd libgl1-mesa-dri libegl-mesa0 libgbm1 fonts-dejavu-core fonts-liberation >/dev/null
+  weston seatd libgl1-mesa-dri libegl-mesa0 libgbm1 fonts-dejavu-core fonts-liberation chrony bluez >/dev/null
 apt-cache policy chromium | grep -q 'Installed:.*rkmpp' || meurs "chromium installé n'est pas celui du PPA (rkmpp)"
 
 # ---- 2. Node 22 officiel (empreinte vérifiée) --------------------------------------------------
@@ -140,8 +140,8 @@ EOF
 cat > /etc/systemd/system/pxl-serveur.service <<EOF
 [Unit]
 Description=PXL — serveur d'habillage (pages pour vMix, console, preview)
-After=network-online.target
-Wants=network-online.target
+After=network-online.target time-sync.target
+Wants=network-online.target time-sync.target
 [Service]
 User=pxl
 Group=pxl
@@ -227,6 +227,17 @@ if [ -e /dev/watchdog ] || [ -e /dev/watchdog0 ]; then
   mkdir -p /etc/systemd/system.conf.d
   printf '[Manager]\nRuntimeWatchdogSec=30s\nRebootWatchdogSec=2min\n' > /etc/systemd/system.conf.d/pxl-watchdog.conf
 fi
+
+# ---- 6 bis. l'heure : la box n'a PAS d'horloge sauvegardée (aucun /dev/rtc, mesuré sur la TurboNode le 01/10) ----
+# Sources : Observatoire de Paris (SYRTE, référence nationale du temps), Sorbonne Université, pool français —
+# testées en NTP depuis la box le 01/10 (strate 2, 5 à 6 ms). Le NTP annoncé par DHCP est déjà pris en compte
+# par Ubuntu (dispatcher NetworkManager 20-chrony-dhcp → /run/chrony-dhcp).
+mkdir -p /etc/chrony/sources.d
+printf 'server ntp.obspm.fr iburst prefer\nserver ntp1.jussieu.fr iburst\npool fr.pool.ntp.org iburst maxsources 2\n' > /etc/chrony/sources.d/pxl-paris.sources
+# Le serveur d'habillage attend l'heure (au plus 60 s : sans Internet, il démarre quand même).
+systemctl enable -q chrony chrony-wait.service
+mkdir -p /etc/systemd/system/chrony-wait.service.d
+printf '[Service]\nTimeoutStartSec=60\n' > /etc/systemd/system/chrony-wait.service.d/pxl.conf
 
 # ---- 7. application, puis démarrage -----------------------------------------------------------
 [ $EN_LIGNE = 1 ] && { systemctl daemon-reload; systemctl restart systemd-journald; }

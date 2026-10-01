@@ -44,6 +44,9 @@ TS_AUTHKEY=tskey-… bash installation/installer.sh
 | `pxl-sante` | `:$SANTE_PORT/sante` (JSON) et `/sante.txt` (lisible) : températures, charge, mémoire, disque, GPU, services et relances, `/api/sante` du serveur | — |
 | `seatd` | accès DRM et entrées pour Weston, sans session de bureau | — |
 | `pxl-facade` | afficheur HT1628 : heure, pictogrammes LAN/Wi-Fi ; messages par `/run/turbohq-facade` | — |
+| `pxl-ntp-facade` | **« ntP » clignote sur la façade** tant que l'heure n'est pas synchronisée (la box n'a pas d'horloge sauvegardée), puis `SYnC` | — |
+| `chrony` + `chrony-wait` | sources : **Observatoire de Paris** (`ntp.obspm.fr`, SYRTE), Sorbonne (`ntp1.jussieu.fr`), `fr.pool.ntp.org`, + le NTP annoncé par DHCP ; le serveur d'habillage attend l'heure 60 s au plus | — |
+| `pxl-secours-reseau` · `pxl-cec-nom` · `pxl-relais` · `turbohq-console` | repris de la TurboNode : adresse de secours **192.168.55.230/24** sans DHCP · nom CEC « PXL HABILLAGE » · relais TurboHQ :8080 (**sans** la clé ni les certificats de la TurboNode) · console :8088 | — |
 | `pxl-telecommande` | **OK** = recharger la preview (`rELd`) · **Menu/Accueil** = IP sur la façade · **Power maintenu 3 s** = redémarrer (3-2-1, `boot`). Télécommande IR **et** TV par HDMI-CEC ; ces touches sont **retirées à Weston/Chromium et à logind** (sinon « Retour » quittait la preview et « Power » éteignait la box) | — |
 
 Les trois services `pxl-*` sont relancés seuls (`Restart=always`). Si la preview tombe, le serveur continue.
