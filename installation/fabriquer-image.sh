@@ -9,7 +9,8 @@
 #
 # Produit $TRAVAIL/<nom>.img.xz — à flasher avec balenaEtcher.
 # SANS_XZ=1 : s'arrête avant la compression ; puis, plus tard (par ex. quand la clé Tailscale est prête) :
-#   TS_AUTHKEY=tskey-… bash fabriquer-image.sh --finir /opt/pxl-image/<nom>.img   (pose la clé, compresse)
+#   TS_AUTHKEY=tskey-… [TS_TAGS=tag:…] bash fabriquer-image.sh --finir /opt/pxl-image/<nom>.img
+#   (pose la clé et le tag, compresse ; l'.img est GARDÉE, on peut refinir)
 # Ce que l'image NE porte PAS, et qui naît au premier démarrage : clés SSH, machine-id, inscription Tailscale.
 # TS_AUTHKEY : préférer une clé À USAGE UNIQUE, expirant vite, taguée — elle est effacée dès qu'elle a servi.
 set -euo pipefail
@@ -25,7 +26,7 @@ if [ -z "${PXL_FAB_PRIVE:-}" ]; then exec env PXL_FAB_PRIVE=1 unshare --mount --
 
 compresser() {
   dire "compression (xz, 4 fils)…"
-  xz -T4 -3 -f "$1"
+  xz -T4 -3 -k -f "$1"   # -k : l'.img reste, pour pouvoir refinir (autre clé) sans tout refabriquer
   sha256sum "$1.xz" > "$1.xz.sha256"
   dire "✅ $1.xz ($(du -h "$1.xz" | cut -f1)) — à flasher avec balenaEtcher"
 }
@@ -33,6 +34,7 @@ if [ "${1:-}" = --finir ]; then
   IMG=${2:?image .img}; M=$(mktemp -d); L=$(losetup -fP --show "$IMG")
   mount "${L}p2" "$M"
   if [ -n "${TS_AUTHKEY:-}" ]; then ( umask 077; printf '%s' "$TS_AUTHKEY" > "$M/etc/pxl-kiosk/ts-authkey" ); dire "clé Tailscale posée"; fi
+  [ -n "${TS_TAGS+x}" ] && { sed -i "s|^TS_TAGS=.*|TS_TAGS=$TS_TAGS|" "$M/etc/pxl-kiosk.conf"; dire "TS_TAGS=$TS_TAGS"; }
   umount "$M"; losetup -d "$L"; rmdir "$M"
   compresser "$IMG"; exit 0
 fi
