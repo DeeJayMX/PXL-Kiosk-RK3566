@@ -121,6 +121,9 @@ id pxl >/dev/null 2>&1 || useradd --system --create-home --home-dir /var/lib/pxl
 usermod -aG video,render,input pxl
 mkdir -p "$LIB" /etc/pxl-kiosk "$APP_DIR"
 install -m 755 "$ICI/fichiers/preview.sh" "$LIB/preview.sh"
+# Règles Chromium imposées : pas de bulle de traduction sur la preview (signalée à l'écran le 02/10/2026).
+mkdir -p /etc/chromium/policies/managed
+printf '{\n  "TranslateEnabled": false\n}\n' > /etc/chromium/policies/managed/pxl.json
 install -m 644 "$ICI/fichiers/sante.mjs"  "$LIB/sante.mjs"
 install -m 755 "$ICI/fichiers/pxl-kiosk"  /usr/local/bin/pxl-kiosk
 install -m 755 "$ICI/fichiers/premier-demarrage.sh" "$LIB/premier-demarrage.sh"

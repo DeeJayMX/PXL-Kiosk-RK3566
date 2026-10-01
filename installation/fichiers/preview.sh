@@ -17,7 +17,11 @@ for i in $(seq 60); do curl -s -o /dev/null "$PREVIEW_URL" && break; sleep 1; do
 # Profil en mémoire (/run) : pas d'usure de l'eMMC, et un état neuf à chaque démarrage.
 # DevTools sur 127.0.0.1:9222 seulement : sert au banc de mesure (scripts/banc/) et au diagnostic.
 # Les drapeaux de décodage matériel et --ozone-platform-hint=wayland viennent de /etc/chromium.d (paquet PPA).
+# --lang/--accept-lang : pages servies en français (dates, Accept-Language) et plus de bulle « traduire » sur une page
+# française ; la traduction est en plus coupée par règle (/etc/chromium/policies/managed/pxl.json). Les menus de
+# Chromium restent en anglais : le paquet du PPA ne livre que en-US.pak (vu le 02/10/2026) — aucun ne s'affiche en kiosque.
 chromium --kiosk --no-first-run --noerrdialogs --disable-infobars --disable-session-crashed-bubble \
+  --lang=fr --accept-lang=fr-FR,fr \
   --user-data-dir="$XDG_RUNTIME_DIR/profil" --remote-debugging-port=9222 \
   --autoplay-policy=no-user-gesture-required "$PREVIEW_URL" &
 CHROMIUM=$!
