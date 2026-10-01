@@ -13,6 +13,7 @@ dépôt. Ils sont laissés tels quels, pour ne pas réécrire un document daté.
 | [`RAPPORT_RECHERCHE.md`](RAPPORT_RECHERCHE.md) | synthèse : chemin recommandé en 9 étapes, matrice page × sortie, contradictions, mesures à faire | synthèse |
 | [`recherche/test_chromium_radxa_126.md`](recherche/test_chromium_radxa_126.md) | **les essais sur la box**, dans l'ordre : Panfrost, puis Mesa 25, puis kbase + libmali, puis Xorg Rockchip | **mesuré** |
 | [`recherche/test_habillage_urban_trail.md`](recherche/test_habillage_urban_trail.md) | **l'habillage animé** (page PGM d'Urban Trail) : le verrou `FlipFB`, puis le mur processeur de la séquence complète | **mesuré** |
+| [`recherche/ppa_rockchip_multimedia.md`](recherche/ppa_rockchip_multimedia.md) | le PPA d'amazingfate : Chromium 132 MPP **compilé avec Wayland**, pour Ubuntu noble, et toute la pile multimédia Rockchip empaquetée | mesuré + lu |
 | [`recherche/mesures_box_et_android_emmc.md`](recherche/mesures_box_et_android_emmc.md) | état de la box ; lecture de l'Android 14 d'origine sur l'eMMC (1080p forcé, AFBC, DMC) ; errata | mesuré + lu |
 | [`recherche/notes_internes_turbonode.md`](recherche/notes_internes_turbonode.md) | ce que le labo avait déjà établi sur la box : plans VOP2, WebView, thermique | digest |
 | [`recherche/pile_os_noyau_gpu.md`](recherche/pile_os_noyau_gpu.md) | BSP ou mainline, Panfrost ou libmali, versions de Mesa, PanVK, distributions | web |
