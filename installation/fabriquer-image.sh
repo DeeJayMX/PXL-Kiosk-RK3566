@@ -34,6 +34,7 @@ if [ "${1:-}" = --finir ]; then
   IMG=${2:?image .img}; M=$(mktemp -d); L=$(losetup -fP --show "$IMG")
   mount "${L}p2" "$M"
   if [ -n "${TS_AUTHKEY:-}" ]; then ( umask 077; printf '%s' "$TS_AUTHKEY" > "$M/etc/pxl-kiosk/ts-authkey" ); dire "clé Tailscale posée"; fi
+  install -m 755 "$ICI/fichiers/premier-demarrage.sh" "$M/usr/local/lib/pxl-kiosk/premier-demarrage.sh"   # dernière version
   [ -n "${TS_TAGS+x}" ] && { sed -i "s|^TS_TAGS=.*|TS_TAGS=$TS_TAGS|" "$M/etc/pxl-kiosk.conf"; dire "TS_TAGS=$TS_TAGS"; }
   umount "$M"; losetup -d "$L"; rmdir "$M"
   compresser "$IMG"; exit 0

@@ -9,6 +9,8 @@ if [ -s "$K" ]; then
   for i in $(seq 30); do
     tailscale status >/dev/null 2>&1 && break
     tailscale up --auth-key="$(cat "$K")" --hostname="$NOM_MACHINE" --ssh ${TS_TAGS:+--advertise-tags=$TS_TAGS} && break
+    # Une clé déjà taguée impose ses tags : demander un autre tag fait échouer l'inscription. On réessaie sans.
+    [ -n "${TS_TAGS:-}" ] && tailscale up --auth-key="$(cat "$K")" --hostname="$NOM_MACHINE" --ssh && break
     sleep 10
   done
   tailscale status >/dev/null 2>&1 && shred -u "$K" && echo "tailnet rejoint, clé effacée"
