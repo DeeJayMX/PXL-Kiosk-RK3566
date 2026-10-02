@@ -100,6 +100,13 @@
   </section>
 
   <section>
+    <h2>Surveillance</h2>
+    <div class="grille" id="surv"></div>
+    <p class="note">La carte SD ne devrait presque plus rien recevoir (journal en mémoire) : un rythme qui monte en continu
+      signale un programme qui écrit. Images par seconde : mesurées dans la page affichée, sur une seconde.</p>
+  </section>
+
+  <section>
     <h2>Ethernet</h2>
     <div class="grille" id="eth-etat"></div>
     <form id="f-ethernet">
@@ -251,6 +258,22 @@ function rendre() {
     + case_('GPU', `${nb(mt.gpu_mhz)} MHz`);
   $('#mat-tensions').innerHTML = mt.tensions.map(t => case_(t.nom + (t.variable ? ' (suit la charge)' : ''),
     `${nb(t.v, t.v < 2 ? 3 : 1)} V`)).join('');
+  // Surveillance
+  const sv = E.surveillance, oct = o => o == null ? '—' : o < 1024 ** 2 ? `${nb(o / 1024)} Ko` : o < 1024 ** 3 ? `${nb(o / 1024 ** 2, 1)} Mo` : `${nb(o / 1024 ** 3, 2)} Go`;
+  const hz = +((sv.hdmi.mode || '').match(/p([\d.]+)$/) || [])[1] || null;
+  const ips = sv.preview.ips, classeIps = ips == null ? 'ko' : !hz ? '' : ips >= hz * .9 ? 'ok' : ips >= hz * .7 ? 'moyen' : 'ko';
+  const wf = sv.wifi, sig = wf && wf.signal_dbm, classeSig = sig == null ? '' : sig >= -60 ? 'ok' : sig >= -72 ? 'moyen' : 'ko';
+  $('#surv').innerHTML =
+    case_('Carte SD — écrit depuis le démarrage', `${oct(sv.sd.ecrit_o)}`)
+    + case_('Carte SD — rythme moyen', sv.sd.rythme_o_min == null ? 'disponible après une minute' : `${oct(sv.sd.rythme_o_min)} / min <small style="display:inline;color:var(--doux)">sur ${sv.sd.fenetre_min} min</small>`,
+      sv.sd.rythme_o_min == null ? '' : sv.sd.rythme_o_min < 64 * 1024 ? 'ok' : sv.sd.rythme_o_min < 1024 ** 2 ? 'moyen' : 'ko')
+    + case_('Wi-Fi', wf ? `${esc(wf.ssid)} · ${sig} dBm` : 'non connecté', wf ? classeSig : 'moyen')
+    + case_('Wi-Fi — débit', wf ? `↓ ${nb(wf.reception_mbit)} · ↑ ${nb(wf.emission_mbit)} Mbit/s · ${esc(wf.bande || '')}` : '—')
+    + case_('Ethernet', sv.ethernet.cable ? `${sv.ethernet.vitesse_mbit ? nb(sv.ethernet.vitesse_mbit) + ' Mbit/s' : 'liaison'}${sv.ethernet.duplex ? ' · ' + esc(sv.ethernet.duplex === 'full' ? 'duplex intégral' : sv.ethernet.duplex) : ''}` : 'câble débranché',
+      sv.ethernet.cable ? 'ok' : 'moyen')
+    + case_('Sortie HDMI', sv.hdmi.branche ? `${esc(sv.hdmi.mode || 'mode inconnu')}${sv.hdmi.ecran ? ' · ' + esc(sv.hdmi.ecran) : ''}` : 'aucun écran branché', sv.hdmi.branche ? 'ok' : 'ko')
+    + case_('HDMI — débranchements', `${sv.hdmi.debranchements} <small style="display:inline;color:var(--doux)">depuis le lancement de la preview</small>`, sv.hdmi.debranchements ? 'moyen' : 'ok')
+    + case_('Preview — images/s', ips == null ? esc(sv.preview.erreur || 'page absente') : `${nb(ips, 1)}${hz ? ` <small style="display:inline;color:var(--doux)">/ ${nb(hz)} attendues</small>` : ''}`, classeIps);
   // Ethernet
   const i4 = e.ipv4 || {};
   $('#eth-etat').innerHTML = case_('Câble', e.cable ? 'branché' : 'débranché', e.cable ? 'ok' : 'moyen')

@@ -188,6 +188,71 @@ function materiel() {
     gpu_mhz: (freq('/sys/class/devfreq/fde60000.gpu/cur_freq') ?? 0) / 1e6,
   };
 }
+// ---------------------------------------------------------------- surveillance : carte SD, liaisons, HDMI, preview
+// Écritures sur la carte depuis le démarrage (champ 7 de /sys/block/<dev>/stat, en secteurs de 512 o), et rythme moyen
+// sur les 30 dernières minutes : c'est le témoin de la règle « le minimum d'écritures » (02/10). ⚠️ Pas sur une fenêtre
+// courte : ext4 (commit=600) n'écrit que par paquets toutes les 10 min, une fenêtre de quelques secondes affiche 0 ou un pic.
+const echantillons = [];   // { t, octets }, relevés à chaque lecture de l'état, gardés 30 min
+function carteSd() {
+  const dev = 'mmcblk0', st = (lire(`/sys/block/${dev}/stat`) || '').split(/\s+/);
+  const octets = +st[6] * 512, t = Date.now();
+  echantillons.push({ t, octets });
+  while (echantillons.length > 1 && t - echantillons[1].t >= 30 * 60e3) echantillons.shift();
+  const ancien = echantillons[0], fenetre = t - ancien.t;
+  return { ecrit_o: octets, depuis_s: Math.round(uptime()),
+    rythme_o_min: fenetre >= 60e3 ? Math.max(0, octets - ancien.octets) / (fenetre / 60e3) : null, fenetre_min: Math.round(fenetre / 60e3),
+    fabrication: lire(`/sys/block/${dev}/device/date`), nom: lire(`/sys/block/${dev}/device/name`) };
+}
+// échantillon toutes les 5 min même sans page ouverte : le rythme est disponible dès la première visite
+setInterval(() => { if (process.argv.length <= 2) carteSd(); }, 5 * 60e3).unref();
+async function liaisons() {
+  const w = await run('iw', ['dev', 'wlan0', 'link'], { timeout: 4000 });
+  const v = re => (w.out.match(re) || [])[1];
+  const freq = +v(/freq:\s*([\d.]+)/);
+  const wifi = /Connected to/.test(w.out) ? { ssid: v(/SSID:\s*(.+)/), signal_dbm: +v(/signal:\s*(-?\d+)/),
+    reception_mbit: +v(/rx bitrate:\s*([\d.]+)/), emission_mbit: +v(/tx bitrate:\s*([\d.]+)/),
+    bande: freq ? (freq > 5900 ? '6 GHz' : freq > 4000 ? '5 GHz' : '2,4 GHz') : null } : null;
+  const cable = lire('/sys/class/net/eth0/carrier') === '1', vitesse = lireNb('/sys/class/net/eth0/speed');
+  return { wifi, ethernet: { cable, vitesse_mbit: cable && vitesse > 0 ? vitesse : null, duplex: cable ? lire('/sys/class/net/eth0/duplex') : null } };
+}
+function hdmi() {
+  const c = '/sys/class/drm/card0-HDMI-A-1', branche = lire(`${c}/status`) === 'connected';
+  let ecran = null;
+  try {   // EDID : fabricant (3 lettres sur 15 bits, octets 8-9) + nom (descripteur 0xFC)
+    const e = readFileSync(`${c}/edid`);
+    if (e.length >= 128) {
+      const m = e.readUInt16BE(8), lettre = n => String.fromCharCode(64 + (n & 31));
+      let nom = '';
+      for (let o = 54; o < 126; o += 18) if (e[o] === 0 && e[o + 1] === 0 && e[o + 3] === 0xfc) nom = e.subarray(o + 5, o + 18).toString('latin1').replace(/\n.*$/s, '').trim();
+      ecran = `${lettre(m >> 10)}${lettre(m >> 5)}${lettre(m)}${nom ? ' ' + nom : ''}`;
+    }
+  } catch {}
+  const resume = lire('/sys/kernel/debug/dri/0/summary') || '';
+  const mode = (resume.match(/Display mode:\s*(\S+)/) || [])[1] || null;
+  // débranchements vus par Weston depuis le lancement de la preview (son journal est en RAM, dans /run)
+  const log = lire('/run/pxl-preview/weston.log') || '';
+  return { branche, ecran, mode, debranchements: (log.match(/is disconnected/g) || []).length };
+}
+// Images par seconde RÉELLES de la page affichée : requestAnimationFrame compté pendant 1 s, par DevTools (:9222, local)
+async function preview() {
+  try {
+    const cibles = await (await fetch('http://127.0.0.1:9222/json', { signal: AbortSignal.timeout(1500) })).json();
+    const p = cibles.find(t => t.type === 'page'); if (!p) return { page: null };
+    const ws = new WebSocket(p.webSocketDebuggerUrl);
+    const ips = await new Promise((res, rej) => {
+      const t = setTimeout(() => { ws.close(); rej(new Error('délai')); }, 4000);
+      ws.onerror = () => { clearTimeout(t); rej(new Error('DevTools')); };
+      ws.onmessage = e => { const m = JSON.parse(e.data); if (m.id === 1) { clearTimeout(t); ws.close(); res(m.result?.result?.value); } };
+      ws.onopen = () => ws.send(JSON.stringify({ id: 1, method: 'Runtime.evaluate', params: { awaitPromise: true, returnByValue: true,
+        expression: 'new Promise(r=>{let n=0;const t0=performance.now();const f=()=>{n++;performance.now()-t0<1000?requestAnimationFrame(f):r(n*1000/(performance.now()-t0))};requestAnimationFrame(f)})' } }));
+    });
+    return { page: p.url, ips: Math.round(ips * 10) / 10 };
+  } catch (e) { return { page: null, erreur: e.message }; }
+}
+async function surveillance() {
+  const [l, p] = await Promise.all([liaisons(), preview()]);
+  return { sd: carteSd(), ...l, hdmi: hdmi(), preview: p };
+}
 function retourEnCours() {
   try { const r = JSON.parse(readFileSync(RETOUR, 'utf8')); return { quoi: r.quoi, expire: r.expire }; } catch { return null; }
 }
@@ -282,8 +347,8 @@ async function wifiParUuid(uuid) {
 async function api(req, u, q) {
   const p = u.pathname;
   if (p === '/api/etat') {
-    const [r, e, w, h, m] = await Promise.all([reseau(), ethernet(), wifi(), heure(), machine()]);
-    return { reseau: r, ethernet: e, wifi: w, heure: h, machine: m, materiel: materiel(), retour: retourEnCours(), retour_s: RETOUR_S };
+    const [r, e, w, h, m, s] = await Promise.all([reseau(), ethernet(), wifi(), heure(), machine(), surveillance()]);
+    return { reseau: r, ethernet: e, wifi: w, heure: h, machine: m, materiel: materiel(), surveillance: s, retour: retourEnCours(), retour_s: RETOUR_S };
   }
   if (p === '/api/wifi/scan') {
     const r = await run('nmcli', ['-t', '-f', 'SSID,SIGNAL,SECURITY', 'dev', 'wifi', 'list', '--rescan', 'yes'], { timeout: 30000 });
