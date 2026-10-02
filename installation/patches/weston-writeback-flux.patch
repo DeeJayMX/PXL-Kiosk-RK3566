@@ -1,0 +1,490 @@
+diff -ruN a/libweston/backend-drm/drm-internal.h b/libweston/backend-drm/drm-internal.h
+--- a/libweston/backend-drm/drm-internal.h	2026-10-02 19:33:20.910296958 +0000
++++ b/libweston/backend-drm/drm-internal.h	2026-10-02 19:33:20.913453007 +0000
+@@ -592,6 +592,10 @@
+ 	 * framebuffers in every drm_plane_state of the output state that we've
+ 	 * used to request the writeback job */
+ 	struct wl_array referenced_fbs;
++
++	/* PXL : case de l'anneau du flux writeback sans copie (-1 = capture
++	 * classique weston_capture). Voir pxl_wb_* dans drm.c. */
++	int pxl_slot;
+ };
+ 
+ struct drm_writeback {
+@@ -719,6 +723,12 @@
+ enum writeback_screenshot_state
+ drm_output_get_writeback_state(struct drm_output *output);
+ 
++/* PXL : flux writeback sans copie (drm.c) */
++bool
++pxl_wb_attach_needed(struct drm_writeback_state *state);
++void
++pxl_wb_attached(struct drm_writeback_state *state, bool ok);
++
+ void
+ drm_output_destroy(struct weston_output *output_base);
+ void
+diff -ruN a/libweston/backend-drm/drm.c b/libweston/backend-drm/drm.c
+--- a/libweston/backend-drm/drm.c	2026-10-02 19:33:20.910169223 +0000
++++ b/libweston/backend-drm/drm.c	2026-10-02 19:33:20.913378625 +0000
+@@ -68,6 +68,8 @@
+ #include "linux-dmabuf.h"
+ #include "linux-dmabuf-unstable-v1-server-protocol.h"
+ #include "linux-explicit-synchronization.h"
++#include <sys/socket.h>
++#include <sys/un.h>
+ 
+ static const char default_seat[] = "seat0";
+ 
+@@ -513,6 +515,7 @@
+ 
+ 	state->state = DRM_OUTPUT_WB_SCREENSHOT_OFF;
+ 	state->out_fence_fd = -1;
++	state->pxl_slot = -1;
+ 	wl_array_init(&state->referenced_fbs);
+ 
+ 	return state;
+@@ -539,6 +542,364 @@
+ 	free(state);
+ }
+ 
++/* ═══════════════════════════════════════════════════════════════════════════
++ * PXL — FLUX WRITEBACK SANS COPIE (patch PXL-Kiosk, 02/10/2026)
++ *
++ * Le VOP2 écrit ce qu'il envoie au HDMI dans un anneau de tampons NV12 que
++ * Weston alloue UNE fois ; leurs DMA-BUF sont passés une fois à un encodeur
++ * (pxl-wb-enc, MPP) par un socket local, puis chaque image n'est qu'un
++ * message « case n prête » + la barrière (out-fence) du writeback. Aucune
++ * copie processeur, aucune conversion : l'encodeur lit le NV12 du VOP2.
++ *
++ *  - activé par l'environnement PXL_WB_SOCKET (chemin du socket) ;
++ *  - le connecteur writeback n'est attaché au CRTC qu'une fois (un modeset
++ *    au branchement de l'encodeur), ensuite seul WRITEBACK_FB_ID change ;
++ *  - Weston n'ATTEND PAS la fin du writeback (contrairement aux captures
++ *    weston_capture) : c'est l'encodeur qui attend la barrière. L'affichage
++ *    ne ralentit jamais — sans case libre, l'image n'est pas capturée ;
++ *  - un minuteur force une recomposition à la cadence demandée, sinon un
++ *    écran fixe ne produirait d'images qu'au rythme de ses changements.
++ * Leçons de la TurboNode : PXL-TurboHQ/TurboNode/WRITEBACK.md.
++ * ═══════════════════════════════════════════════════════════════════════════ */
++#define PXL_WB_N 4
++#define PXL_WB_MAGIC 0x57584c50u	/* « PXLW » */
++enum { PXL_WB_HELLO = 1, PXL_WB_RELEASE = 2, PXL_WB_RING = 10, PXL_WB_FRAME = 11, PXL_WB_STATS = 12 };
++struct pxl_wb_msg {
++	uint32_t magic, type, slot, n, w, h, pitch, size, uvoff, fps;
++	uint64_t t_ns, frames, skipped;
++};
++static struct {
++	bool init;
++	int lfd, cfd;
++	struct wl_event_source *lsrc, *csrc, *timer;
++	struct drm_output *output;
++	int n, w, h, fps;
++	struct drm_fb *fb[PXL_WB_N];
++	int dmabuf[PXL_WB_N];
++	uint32_t pitch, size;
++	bool busy[PXL_WB_N];
++	bool attached;
++	bool ring_sent;
++	uint64_t last_ns, frames, skipped;
++} pxl = { .lfd = -1, .cfd = -1 };
++
++static uint64_t
++pxl_now_ns(void)
++{
++	struct timespec ts;
++	clock_gettime(CLOCK_MONOTONIC, &ts);
++	return (uint64_t)ts.tv_sec * 1000000000ull + ts.tv_nsec;
++}
++
++static int
++pxl_send(const struct pxl_wb_msg *m, const int *fds, int nfds)
++{
++	struct iovec iov = { (void *)m, sizeof *m };
++	char ctl[CMSG_SPACE(sizeof(int) * PXL_WB_N)];
++	struct msghdr mh = { .msg_iov = &iov, .msg_iovlen = 1 };
++	if (pxl.cfd < 0)
++		return -1;
++	if (nfds > 0) {
++		struct cmsghdr *c;
++		memset(ctl, 0, sizeof ctl);
++		mh.msg_control = ctl;
++		mh.msg_controllen = CMSG_SPACE(sizeof(int) * nfds);
++		c = CMSG_FIRSTHDR(&mh);
++		c->cmsg_level = SOL_SOCKET;
++		c->cmsg_type = SCM_RIGHTS;
++		c->cmsg_len = CMSG_LEN(sizeof(int) * nfds);
++		memcpy(CMSG_DATA(c), fds, sizeof(int) * nfds);
++	}
++	return sendmsg(pxl.cfd, &mh, MSG_NOSIGNAL | MSG_DONTWAIT) == sizeof *m ? 0 : -1;
++}
++
++static void
++pxl_ring_free(void)
++{
++	int i;
++	for (i = 0; i < pxl.n; i++) {
++		if (pxl.dmabuf[i] >= 0)
++			close(pxl.dmabuf[i]);
++		pxl.dmabuf[i] = -1;
++		drm_fb_unref(pxl.fb[i]);	/* une case en vol garde sa référence */
++		pxl.fb[i] = NULL;
++		pxl.busy[i] = false;
++	}
++	pxl.n = 0;
++	pxl.ring_sent = false;
++}
++
++static struct drm_fb *
++pxl_fb_nv12(struct drm_device *device, int w, int h, int *dmabuf)
++{
++	struct drm_mode_create_dumb c = { .width = w, .height = h * 3 / 2, .bpp = 8 };
++	struct drm_mode_destroy_dumb d;
++	struct drm_fb *fb;
++
++	if (drmIoctl(device->drm.fd, DRM_IOCTL_MODE_CREATE_DUMB, &c))
++		return NULL;
++	fb = zalloc(sizeof *fb);
++	if (!fb)
++		goto err;
++	fb->refcnt = 1;
++	fb->backend = device->backend;
++	fb->type = BUFFER_PIXMAN_DUMB;	/* détruit comme un dumb, sans mmap */
++	fb->format = pixel_format_get_info(DRM_FORMAT_NV12);
++	fb->modifier = DRM_FORMAT_MOD_INVALID;
++	fb->handles[0] = fb->handles[1] = c.handle;
++	fb->strides[0] = fb->strides[1] = c.pitch;
++	fb->offsets[1] = c.pitch * h;
++	fb->num_planes = 2;
++	fb->size = c.size;
++	fb->width = w;
++	fb->height = h;
++	fb->fd = device->drm.fd;
++	if (drmModeAddFB2(fb->fd, w, h, DRM_FORMAT_NV12, fb->handles, fb->strides,
++			  fb->offsets, &fb->fb_id, 0))
++		goto err_fb;
++	if (drmPrimeHandleToFD(fb->fd, c.handle, DRM_CLOEXEC | DRM_RDWR, dmabuf)) {
++		drmModeRmFB(fb->fd, fb->fb_id);
++		goto err_fb;
++	}
++	pxl.pitch = c.pitch;
++	pxl.size = c.size;
++	return fb;
++err_fb:
++	free(fb);
++err:
++	memset(&d, 0, sizeof d);
++	d.handle = c.handle;
++	drmIoctl(device->drm.fd, DRM_IOCTL_MODE_DESTROY_DUMB, &d);
++	return NULL;
++}
++
++static void
++pxl_client_close(void)
++{
++	if (pxl.csrc)
++		wl_event_source_remove(pxl.csrc);
++	pxl.csrc = NULL;
++	if (pxl.cfd >= 0)
++		close(pxl.cfd);
++	pxl.cfd = -1;
++	pxl.fps = 0;
++	pxl_ring_free();
++	weston_log("pxl-wb: encodeur parti (%llu images, %llu sautées)\n",
++		   (unsigned long long)pxl.frames, (unsigned long long)pxl.skipped);
++}
++
++static int
++pxl_client_input(int fd, uint32_t mask, void *data)
++{
++	struct pxl_wb_msg m;
++	ssize_t r;
++
++	if (mask & (WL_EVENT_HANGUP | WL_EVENT_ERROR)) {
++		pxl_client_close();
++		return 0;
++	}
++	while ((r = recv(fd, &m, sizeof m, MSG_DONTWAIT)) == sizeof m) {
++		if (m.magic != PXL_WB_MAGIC)
++			continue;
++		if (m.type == PXL_WB_HELLO) {
++			pxl.fps = m.fps > 0 && m.fps <= 60 ? (int)m.fps : 25;
++			pxl.frames = pxl.skipped = 0;
++			weston_log("pxl-wb: encodeur branché, %d img/s demandées\n", pxl.fps);
++			if (pxl.timer)
++				wl_event_source_timer_update(pxl.timer, 1000 / pxl.fps);
++		} else if (m.type == PXL_WB_RELEASE && m.slot < PXL_WB_N) {
++			pxl.busy[m.slot] = false;
++		}
++	}
++	if (r == 0)
++		pxl_client_close();
++	return 0;
++}
++
++static int
++pxl_listen_input(int fd, uint32_t mask, void *data)
++{
++	struct wl_event_loop *loop = data;
++	int c = accept4(fd, NULL, NULL, SOCK_CLOEXEC | SOCK_NONBLOCK);
++
++	if (c < 0)
++		return 0;
++	if (pxl.cfd >= 0)	/* un seul encodeur à la fois : le nouveau remplace l'ancien */
++		pxl_client_close();
++	pxl.cfd = c;
++	pxl.csrc = wl_event_loop_add_fd(loop, c, WL_EVENT_READABLE, pxl_client_input, NULL);
++	return 0;
++}
++
++static int
++pxl_timer_cb(void *data)
++{
++	if (pxl.output && pxl.cfd >= 0 && pxl.fps > 0) {
++		weston_output_schedule_repaint(&pxl.output->base);
++		wl_event_source_timer_update(pxl.timer, 1000 / pxl.fps);
++	}
++	return 0;
++}
++
++static void
++pxl_wb_init(struct drm_output *output)
++{
++	const char *path = getenv("PXL_WB_SOCKET");
++	struct wl_event_loop *loop;
++	struct sockaddr_un a = { .sun_family = AF_UNIX };
++	int i;
++
++	pxl.init = true;
++	pxl.output = output;	/* le minuteur doit pouvoir recomposer avant la 1re image */
++	for (i = 0; i < PXL_WB_N; i++)
++		pxl.dmabuf[i] = -1;
++	if (!path || !*path || strlen(path) >= sizeof a.sun_path)
++		return;
++	loop = wl_display_get_event_loop(output->base.compositor->wl_display);
++	strcpy(a.sun_path, path);
++	unlink(path);
++	pxl.lfd = socket(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
++	if (pxl.lfd < 0 || bind(pxl.lfd, (struct sockaddr *)&a, sizeof a) || listen(pxl.lfd, 1)) {
++		weston_log("pxl-wb: socket %s impossible : %s\n", path, strerror(errno));
++		if (pxl.lfd >= 0)
++			close(pxl.lfd);
++		pxl.lfd = -1;
++		return;
++	}
++	pxl.lsrc = wl_event_loop_add_fd(loop, pxl.lfd, WL_EVENT_READABLE, pxl_listen_input, loop);
++	pxl.timer = wl_event_loop_add_timer(loop, pxl_timer_cb, NULL);
++	weston_log("pxl-wb: flux writeback sans copie, socket %s\n", path);
++}
++
++bool
++pxl_wb_attach_needed(struct drm_writeback_state *state)
++{
++	return !state || state->pxl_slot < 0 || !pxl.attached;
++}
++
++void
++pxl_wb_attached(struct drm_writeback_state *state, bool ok)
++{
++	if (state && state->pxl_slot >= 0)
++		pxl.attached = ok;
++}
++
++/* À chaque recomposition : une image de flux, si un encodeur attend, qu'une
++ * case est libre et que l'intervalle demandé est écoulé. */
++static void
++pxl_wb_pick(struct drm_output *output)
++{
++	struct drm_writeback *wb;
++	int w = output->base.current_mode->width;
++	int h = output->base.current_mode->height;
++	uint64_t now;
++	int i, slot = -1;
++
++	if (!pxl.init)
++		pxl_wb_init(output);
++	if (pxl.lfd < 0 || pxl.cfd < 0 || pxl.fps <= 0 || output->wb_state)
++		return;
++	if (pxl.output && pxl.output != output)
++		return;	/* une seule sortie : la première */
++	pxl.output = output;
++	now = pxl_now_ns();
++	/* -4 ms : une image d'avance tolérée sur la grille, sinon un écran à
++	 * 50 Hz pour 25 img/s demandées raterait la moitié des rendez-vous */
++	if (now - pxl.last_ns + 4000000ull < 1000000000ull / pxl.fps)
++		return;
++
++	if (pxl.n && (pxl.w != w || pxl.h != h)) {
++		for (i = 0; i < pxl.n; i++)
++			if (pxl.busy[i])
++				return;	/* attendre que l'encodeur rende tout */
++		pxl_ring_free();
++	}
++	if (!pxl.n) {
++		for (i = 0; i < PXL_WB_N; i++) {
++			pxl.fb[i] = pxl_fb_nv12(output->device, w, h, &pxl.dmabuf[i]);
++			if (!pxl.fb[i]) {
++				weston_log("pxl-wb: tampon NV12 %d impossible\n", i);
++				pxl.n = i;
++				pxl_ring_free();
++				pxl_client_close();
++				return;
++			}
++		}
++		pxl.n = PXL_WB_N;
++		pxl.w = w;
++		pxl.h = h;
++	}
++	if (!pxl.ring_sent) {
++		struct pxl_wb_msg m = { .magic = PXL_WB_MAGIC, .type = PXL_WB_RING, .n = pxl.n,
++					.w = w, .h = h, .pitch = pxl.pitch, .size = pxl.size,
++					.uvoff = pxl.pitch * h, .fps = pxl.fps };
++		if (pxl_send(&m, pxl.dmabuf, pxl.n)) {
++			pxl_client_close();
++			return;
++		}
++		pxl.ring_sent = true;
++	}
++	for (i = 0; i < pxl.n && slot < 0; i++)
++		if (!pxl.busy[i])
++			slot = i;
++	if (slot < 0) {
++		pxl.skipped++;
++		return;
++	}
++	/* pas drm_output_find_compatible_writeback() : elle exige le format de la
++	 * SORTIE (XRGB8888), que le writeback du RK3566 n'a pas (BG24 AR24 RG16
++	 * NV12) — nous écrivons du NV12 */
++	wb = NULL;
++	{
++		struct drm_writeback *w;
++		wl_list_for_each(w, &output->device->writeback_connector_list, link)
++			if ((drm_connector_get_possible_crtcs_mask(&w->connector) & (1 << output->crtc->pipe)) &&
++			    weston_drm_format_array_find_format(&w->formats, DRM_FORMAT_NV12)) {
++				wb = w;
++				break;
++			}
++	}
++	if (!wb) {
++		static bool dit;
++		if (!dit)
++			weston_log("pxl-wb: aucun connecteur writeback NV12 pour cette sortie\n");
++		dit = true;
++		return;
++	}
++	output->wb_state = drm_writeback_state_alloc();
++	if (!output->wb_state)
++		return;
++	output->wb_state->fb = drm_fb_ref(pxl.fb[slot]);
++	output->wb_state->output = output;
++	output->wb_state->wb = wb;
++	output->wb_state->pxl_slot = slot;
++	output->wb_state->state = DRM_OUTPUT_WB_SCREENSHOT_PREPARE_COMMIT;
++	pxl.busy[slot] = true;
++	pxl.last_ns = now;
++}
++
++/* Le commit est parti : la case et sa barrière passent à l'encodeur. */
++static void
++pxl_wb_sent(struct drm_writeback_state *state, bool ok)
++{
++	struct drm_output *output = state->output;
++	int slot = state->pxl_slot;
++
++	if (ok) {
++		struct pxl_wb_msg m = { .magic = PXL_WB_MAGIC, .type = PXL_WB_FRAME, .slot = slot,
++					.t_ns = pxl_now_ns(), .frames = ++pxl.frames,
++					.skipped = pxl.skipped };
++		int fd = state->out_fence_fd;
++		if (pxl_send(&m, fd >= 0 ? &fd : NULL, fd >= 0 ? 1 : 0))
++			pxl.busy[slot] = false;
++	} else {
++		pxl.busy[slot] = false;
++		pxl.attached = false;	/* commit refusé : on ré-attachera */
++	}
++	drm_writeback_state_free(state);	/* ferme notre barrière, rend la référence */
++	output->wb_state = NULL;
++}
++
+ static void
+ drm_output_pick_writeback_capture_task(struct drm_output *output)
+ {
+@@ -715,8 +1076,10 @@
+ 	if (drm_output_ensure_hdr_output_metadata_blob(output) < 0)
+ 		goto err;
+ 
+-	if (device->atomic_modeset)
++	if (device->atomic_modeset) {
+ 		drm_output_pick_writeback_capture_task(output);
++		pxl_wb_pick(output);	/* PXL : flux, si aucune capture n'occupe le writeback */
++	}
+ 
+ 	drm_output_render(state, damage);
+ 	scanout_state = drm_output_state_get_plane(state,
+@@ -2816,6 +3179,10 @@
+ {
+ 	struct drm_output *output = state->output;
+ 
++	if (state->pxl_slot >= 0) {	/* PXL : image de flux ratée, la case est rendue */
++		pxl_wb_sent(state, false);
++		return;
++	}
+ 	weston_capture_task_retire_failed(state->ct, err_msg);
+ 	drm_writeback_state_free(state);
+ 	output->wb_state = NULL;
+@@ -2868,6 +3235,14 @@
+ 	if (state->state == DRM_OUTPUT_WB_SCREENSHOT_WAITING_SIGNAL)
+ 		return true;
+ 
++	/* PXL : on n'attend PAS la fin d'un writeback de flux — la barrière part
++	 * à l'encodeur, qui l'attend lui-même ; l'affichage garde sa cadence */
++	if (state->pxl_slot >= 0) {
++		if (state->state == DRM_OUTPUT_WB_SCREENSHOT_CHECK_FENCE)
++			pxl_wb_sent(state, true);
++		return false;
++	}
++
+ 	if (state->state == DRM_OUTPUT_WB_SCREENSHOT_CHECK_FENCE) {
+ 		if (drm_writeback_has_finished(state))
+ 			return false;
+diff -ruN a/libweston/backend-drm/kms.c b/libweston/backend-drm/kms.c
+--- a/libweston/backend-drm/kms.c	2026-10-02 19:33:20.910059786 +0000
++++ b/libweston/backend-drm/kms.c	2026-10-02 19:33:20.913305764 +0000
+@@ -1169,7 +1169,10 @@
+ 		*flags |= DRM_MODE_ATOMIC_ALLOW_MODESET;
+ 	}
+ 
+-	if (wb_screenshot_state == DRM_OUTPUT_WB_SCREENSHOT_PREPARE_COMMIT) {
++	/* PXL : le flux n'attache le connecteur writeback (donc ne demande un
++	 * modeset) qu'UNE fois ; ensuite seul WRITEBACK_FB_ID change, sans modeset */
++	if (wb_screenshot_state == DRM_OUTPUT_WB_SCREENSHOT_PREPARE_COMMIT &&
++	    pxl_wb_attach_needed(wb_state)) {
+ 		drm_debug(b, "\t\t\t[atomic] Writeback connector screenshot requested, modeset OK\n");
+ 		*flags |= DRM_MODE_ATOMIC_ALLOW_MODESET;
+ 	}
+@@ -1201,17 +1204,20 @@
+ 		}
+ 
+ 		if (wb_screenshot_state == DRM_OUTPUT_WB_SCREENSHOT_PREPARE_COMMIT) {
+-			ret |= connector_add_prop(req, &wb_state->wb->connector,
+-						  WDRM_CONNECTOR_CRTC_ID,
+-						  crtc->crtc_id);
++			if (pxl_wb_attach_needed(wb_state))
++				ret |= connector_add_prop(req, &wb_state->wb->connector,
++							  WDRM_CONNECTOR_CRTC_ID,
++							  crtc->crtc_id);
+ 			ret |= connector_add_prop(req, &wb_state->wb->connector,
+ 						  WDRM_CONNECTOR_WRITEBACK_FB_ID,
+ 						  wb_state->fb->fb_id);
+ 			ret |= connector_add_prop(req, &wb_state->wb->connector,
+ 						  WDRM_CONNECTOR_WRITEBACK_OUT_FENCE_PTR,
+ 						  (uintptr_t)&wb_state->out_fence_fd);
+-			if (!(*flags & DRM_MODE_ATOMIC_TEST_ONLY))
++			if (!(*flags & DRM_MODE_ATOMIC_TEST_ONLY)) {
+ 				wb_state->state = DRM_OUTPUT_WB_SCREENSHOT_CHECK_FENCE;
++				pxl_wb_attached(wb_state, true);
++			}
+ 		}
+ 	} else {
+ 		ret |= crtc_add_prop(req, crtc, WDRM_CRTC_MODE_ID, 0);

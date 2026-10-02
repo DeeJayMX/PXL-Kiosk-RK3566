@@ -146,6 +146,26 @@
   </section>
 
   <section data-onglet="habillage">
+    <h2>Flux TurboHQ de la sortie HDMI</h2>
+    <form id="f-wb">
+      <label><input type="checkbox" id="wb-actif" style="width:auto"> Publier ce que la box affiche sur le HDMI</label>
+      <div class="ligne">
+        <div><label for="wb-url">Relais TurboHQ</label><input id="wb-url" placeholder="ws://127.0.0.1:8080"></div>
+        <div><label for="wb-canal">Canal</label><input id="wb-canal" placeholder="pxlnode"></div>
+      </div>
+      <div class="ligne">
+        <div><label for="wb-fps">Cadence</label><select id="wb-fps"></select></div>
+        <div><label for="wb-debit">Débit (kbit/s)</label><input id="wb-debit" type="number" min="500" max="20000" step="500"></div>
+      </div>
+      <div class="actions"><button class="principal" type="submit">Appliquer</button></div>
+    </form>
+    <div id="wb-etat" class="note"></div>
+    <p class="note">Sans copie : le VOP2 écrit l'image du HDMI, l'encodeur matériel la lit telle quelle. N'affecte ni
+      l'écran ni l'antenne. Relais de la box : <code>ws://127.0.0.1:8080</code>, à regarder sur
+      <code>http://&lt;box&gt;:8080/turbohq_viewer.html?ch=&lt;canal&gt;</code>.</p>
+  </section>
+
+  <section data-onglet="habillage">
     <h2>Mises à jour</h2>
     <div id="maj"><p class="note">chargement…</p></div>
     <p class="note">Source : GitHub. « Vérifier » ne change rien ; « Appliquer » installe la dernière version poussée sur
@@ -311,6 +331,20 @@ function rendre() {
     $('#ecran-mode').innerHTML = ec.modes.map(m => `<option value="${m}">${m.replace('1280x720', '720p').replace('1920x1080i', '1080i').replace('1920x1080', '1080p').replace('@', ' · ')} Hz</option>`).join('')
       + (ec.modes.includes(ec.mode) ? '' : `<option value="" disabled>${esc(ec.mode || '?')}</option>`);
     $('#ecran-mode').value = ec.modes.includes(ec.mode) ? ec.mode : '';
+  }
+  // Flux TurboHQ
+  const w = E.wb;
+  if (w) {
+    if (!$('#f-wb').dataset.touche) {
+      $('#wb-actif').checked = w.actif; $('#wb-url').value = w.url; $('#wb-canal').value = w.canal; $('#wb-debit').value = w.debit;
+      $('#wb-fps').innerHTML = w.fpsPossibles.map(f => `<option value="${f}" ${f === w.fps ? 'selected' : ''}>${f} img/s</option>`).join('');
+    }
+    const vue = `http://${location.hostname}:8080/turbohq_viewer.html?ch=${encodeURIComponent(w.canal)}`;
+    $('#wb-etat').innerHTML = !w.patche ? '<span class="ko">Weston patché absent — refaire la mise à jour « box ».</span>'
+      : !w.client ? '<span class="ko">Client TurboHQ absent sur la box.</span>'
+      : (w.actif ? `<span class="${w.service === 'active' ? 'ok' : 'ko'}">● ${w.service === 'active' ? 'en service' : esc(w.service)}</span>` : '○ arrêté')
+        + (w.stats ? ` · ${esc(w.stats.replace(/^pxl-wb-enc : /, ''))}` : w.actif && w.derniere ? ` · ${esc(w.derniere)}` : '')
+        + (w.actif ? ` · <a href="${esc(vue)}" target="_blank">regarder le flux</a>` : '');
   }
   // Mode
   const md = E.mode || { mode: 'course' }, noms = { course: 'Course', demo: 'Démo', repetition: 'Répétition' };
@@ -478,6 +512,13 @@ $('#f-ecran').addEventListener('submit', ev => {
   ev.preventDefault();
   action(ev.submitter, async () => { await appel('/api/ecran', { mode: $('#ecran-mode').value });
     delete $('#f-ecran').dataset.touche; }, 'écran relancé');
+});
+$('#f-wb').addEventListener('input', () => { $('#f-wb').dataset.touche = 1; });
+$('#f-wb').addEventListener('submit', ev => {
+  ev.preventDefault();
+  action(ev.submitter, async () => { await appel('/api/wb', { actif: $('#wb-actif').checked ? '1' : '0', url: $('#wb-url').value,
+    canal: $('#wb-canal').value, fps: $('#wb-fps').value, debit: $('#wb-debit').value }); delete $('#f-wb').dataset.touche; },
+    $('#wb-actif').checked ? 'flux TurboHQ lancé' : 'flux TurboHQ arrêté');
 });
 $('#f-mode').addEventListener('input', () => { $('#f-mode').dataset.touche = 1; $('#mode-rep').classList.toggle('cache', $('#mode-choix').value !== 'repetition'); });
 $('#f-mode').addEventListener('submit', ev => {

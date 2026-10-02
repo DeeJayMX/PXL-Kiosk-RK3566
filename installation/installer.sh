@@ -106,7 +106,7 @@ apt_progres() { local t pct dernier=10 _; while IFS=: read -r t _ pct _; do case
 apt-get install -y -qq --no-install-recommends -o APT::Status-Fd=3 \
   chromium chromium-sandbox libv4l-rkmpp libv4l-0t64 v4l-utils librockchip-mpp1 rockchip-multimedia-config \
   weston seatd libgl1-mesa-dri libegl-mesa0 libgbm1 fonts-dejavu-core fonts-liberation chrony bluez \
-  plymouth plymouth-label gcc libc6-dev libdrm-dev >/dev/null 3> >(apt_progres)   # gcc + libdrm-dev : pxl-mode (1080i), compilé ici
+  plymouth plymouth-label gcc libc6-dev libdrm-dev librockchip-mpp-dev >/dev/null 3> >(apt_progres)   # gcc + libdrm-dev : pxl-mode (1080i), compilé ici
 progres 60 "paquets système"
 apt-cache policy chromium | grep -q 'Installed:.*rkmpp' || meurs "chromium installé n'est pas celui du PPA (rkmpp)"
 
@@ -206,6 +206,9 @@ SupplementaryGroups=video render input
 RuntimeDirectory=pxl-preview
 RuntimeDirectoryMode=0700
 Environment=XDG_RUNTIME_DIR=/run/pxl-preview
+# flux writeback sans copie (Weston patché, weston-pxl.sh) : socket où l'encodeur pxl-wb-enc se branche — sans
+# encodeur branché, Weston n'en fait rien et ne coûte rien
+Environment=PXL_WB_SOCKET=/run/pxl-preview/pxl-wb.sock
 # en root (+) : referme l'écran de démarrage PXL (Plymouth tient l'affichage) une fois le serveur prêt
 ExecStartPre=+$LIB/fin-ecran-demarrage.sh
 TimeoutStartSec=150
@@ -216,6 +219,21 @@ RestartSec=3
 Nice=10
 CPUWeight=50
 OOMScoreAdjust=500
+[Install]
+WantedBy=multi-user.target
+EOF
+# Sortie HDMI publiée en TurboHQ (réglée dans /admin : WB_ACTIF, WB_URL, WB_CANAL, WB_FPS, WB_DEBIT)
+cat > /etc/systemd/system/pxl-wb.service <<EOF
+[Unit]
+Description=PXL — sortie HDMI de la box publiée en TurboHQ (writeback sans copie)
+After=pxl-preview.service
+[Service]
+User=pxl
+Group=pxl
+SupplementaryGroups=video render
+ExecStart=$LIB/pxl-wb.sh
+Restart=always
+RestartSec=3
 [Install]
 WantedBy=multi-user.target
 EOF
@@ -345,6 +363,14 @@ printf '[Daemon]\nTheme=pxl\nShowDelay=0\nDeviceTimeout=8\n' > /etc/plymouth/ply
 install -m 755 "$ICI/fichiers/demarrage-etapes.sh"    "$LIB/demarrage-etapes.sh"
 # pxl-mode : pose un mode que Weston ne sait pas choisir (1080i50) — compilé sur la box, jamais de binaire dans le dépôt
 gcc -O2 -I/usr/include/libdrm -o "$LIB/pxl-mode" "$ICI/fichiers/pxl-mode.c" -ldrm || meurs "compilation de pxl-mode impossible"
+# flux TurboHQ de la sortie HDMI : encodeur (MPP, sans copie), client TurboHQ embarqué, Weston patché
+gcc -O2 -o "$LIB/pxl-wb-enc" "$ICI/fichiers/pxl-wb-enc.c" -lrockchip_mpp || meurs "compilation de pxl-wb-enc impossible"
+install -m 755 "$ICI/fichiers/pxl-wb.sh" "$LIB/pxl-wb.sh"
+install -m 755 "$ICI/fichiers/weston-pxl.sh" "$LIB/weston-pxl.sh"
+install -m 644 "$ICI/patches/weston-writeback-flux.patch" "$LIB/weston-writeback-flux.patch"
+# Le client TurboHQ (thq-publish.js) vient du dépôt TurboHQ, PRIVÉ : il n'est pas dans cette recette publique. Il est
+# posé à part dans $LIB/turbohq-client (copie de pxl-turbohq-client) ; absent, le flux ne démarre pas et l'admin le dit.
+[ -f "$LIB/turbohq-client/bin/thq-publish.js" ] || dire "⚠️ client TurboHQ absent ($LIB/turbohq-client) : flux TurboHQ indisponible"
 install -m 755 "$ICI/fichiers/fin-ecran-demarrage.sh" "$LIB/fin-ecran-demarrage.sh"
 cat > /etc/systemd/system/pxl-plymouth.service <<'EOF'
 [Unit]
@@ -403,10 +429,16 @@ fi
 systemctl enable -q pxl-premier-demarrage
 udevadm trigger --subsystem-match=misc --action=change 2>/dev/null || true   # pose /dev/video-dec0 tout de suite
 systemctl enable -q seatd pxl-serveur pxl-preview pxl-sante pxl-admin
+# Weston patché (flux writeback sans copie) : reconstruit seulement si la version de Weston ou le patch ont changé.
+# Un échec n'arrête rien : l'écran garde le Weston d'Ubuntu, seul le flux TurboHQ est indisponible.
+progres 68 "Weston (flux sans copie)"
+WESTON_PXL_PATCH="$ICI/patches/weston-writeback-flux.patch" bash "$ICI/fichiers/weston-pxl.sh" || dire "⚠️ Weston patché indisponible — flux TurboHQ désactivé"
+if [ "${WB_ACTIF:-0}" = 1 ]; then systemctl enable -q pxl-wb; else systemctl disable -q --now pxl-wb 2>/dev/null || true; fi
 progres 75 "redémarrage des services"
 systemctl restart seatd pxl-serveur pxl-sante pxl-admin
 sleep 3
 systemctl restart pxl-preview
+[ "${WB_ACTIF:-0}" = 1 ] && systemctl restart pxl-wb
 progres 80 "démarrage de l'écran"
 # attente ACTIVE : on vérifie dès que le serveur et Chromium répondent, au plus 30 s (c'était 30 s fixes, même prêts en 5)
 dire "attente du démarrage (30 s au plus)…"

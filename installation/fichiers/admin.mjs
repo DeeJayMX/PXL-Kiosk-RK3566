@@ -220,6 +220,41 @@ async function regleEcran(q) {
   return {};
 }
 
+// ---------------------------------------------------------------- flux TurboHQ de la sortie HDMI (service pxl-wb)
+// Weston patché écrit l'image du HDMI (writeback du VOP2) dans des tampons que l'encodeur MPP lit SANS COPIE, puis
+// thq-publish l'envoie à un relais TurboHQ. Réglages dans /etc/pxl-kiosk.conf (WB_*), comme la sortie HDMI.
+const WB_FPS = [25, 30, 50];
+async function wb() {
+  const c = lireConf();
+  const act = (await run('systemctl', ['is-active', 'pxl-wb'])).out.trim();
+  const j = await run('journalctl', ['-u', 'pxl-wb', '-n', '40', '--no-pager', '-o', 'cat']);
+  const lignes = j.out.split('\n').filter(l => /pxl-wb-enc :|thq|pxl-wb :/.test(l));
+  const stats = [...lignes].reverse().find(l => /img\/s ·/.test(l)) || null;
+  const patche = !!lire('/etc/pxl-kiosk/weston-pxl');
+  const client = existsSync('/usr/local/lib/pxl-kiosk/turbohq-client/bin/thq-publish.js');
+  return { actif: c.WB_ACTIF === '1', url: c.WB_URL || 'ws://127.0.0.1:8080', canal: c.WB_CANAL || 'pxlnode',
+    fps: +(c.WB_FPS || 25), debit: +(c.WB_DEBIT || 6000), service: act, stats, derniere: lignes.slice(-1)[0] || null,
+    patche, client, fpsPossibles: WB_FPS };
+}
+async function regleWb(q) {
+  const actif = q.actif === '1' || q.actif === true || q.actif === 'true';
+  const url = String(q.url || '').trim(), canal = String(q.canal || '').trim();
+  exiger(/^wss?:\/\/[^\s"'`$\\]+$/.test(url), 'adresse du relais invalide (ws://hôte:port)');
+  exiger(/^[A-Za-z0-9_.-]{1,40}$/.test(canal), 'nom de canal invalide (lettres, chiffres, - _ .)');
+  const fps = +q.fps, debit = Math.round(+q.debit);
+  exiger(WB_FPS.includes(fps), 'cadence invalide'); exiger(debit >= 500 && debit <= 20000, 'débit entre 500 et 20000 kbit/s');
+  exiger(!actif || lire('/etc/pxl-kiosk/weston-pxl'), 'Weston patché absent : refaire la mise à jour « box »');
+  exiger(!actif || existsSync('/usr/local/lib/pxl-kiosk/turbohq-client/bin/thq-publish.js'), 'client TurboHQ absent sur la box (/usr/local/lib/pxl-kiosk/turbohq-client)');
+  let t = readFileSync(CONF, 'utf8');
+  for (const [k, v] of [['WB_ACTIF', actif ? 1 : 0], ['WB_URL', `"${url}"`], ['WB_CANAL', canal], ['WB_FPS', fps], ['WB_DEBIT', debit]])
+    t = poserLigne(t, k, v);
+  ecrireAtomique(CONF, t);
+  const r = actif ? await run('systemctl', ['enable', '--now', 'pxl-wb']).then(async x => x.ok ? run('systemctl', ['restart', 'pxl-wb']) : x)
+    : await run('systemctl', ['disable', '--now', 'pxl-wb']);
+  exiger(r.ok, r.err);
+  return {};
+}
+
 async function machine() {
   const etats = {};
   for (const s of [...RELANCABLES, 'pxl-sante', 'pxl-facade', 'pxl-telecommande', 'pxl-relais', 'seatd', 'chrony', 'tailscaled', 'pxl-admin']) {
@@ -423,7 +458,7 @@ async function api(req, u, q) {
   const p = u.pathname;
   if (p === '/api/etat') {
     const [r, e, w, h, m, s, v] = await Promise.all([reseau(), ethernet(), wifi(), heure(), machine(), surveillance(), versions()]);
-    return { reseau: r, ethernet: e, wifi: w, heure: h, machine: m, materiel: materiel(), surveillance: s, versions: v, mode: mode(), ecran: ecran(), retour: retourEnCours(), retour_s: RETOUR_S };
+    return { reseau: r, ethernet: e, wifi: w, heure: h, machine: m, materiel: materiel(), surveillance: s, versions: v, mode: mode(), ecran: ecran(), wb: await wb(), retour: retourEnCours(), retour_s: RETOUR_S };
   }
   if (p === '/api/wifi/scan') {
     const r = await run('nmcli', ['-t', '-f', 'SSID,SIGNAL,SECURITY', 'dev', 'wifi', 'list', '--rescan', 'yes'], { timeout: 30000 });
@@ -479,6 +514,7 @@ async function actionPost(p, q) {
     case '/api/eteindre': setTimeout(() => run('systemctl', ['poweroff']), 1500); return {};
     case '/api/mode': return regleMode(q);
     case '/api/ecran': return regleEcran(q);
+    case '/api/wb': return regleWb(q);
     // mises à jour depuis GitHub (maj.mjs) — une seule à la fois
     case '/api/maj/verifier': return uneMaj(() => maj.verifier(q.cible));
     case '/api/maj/appliquer': return uneMaj(() => maj.appliquer(q.cible));
