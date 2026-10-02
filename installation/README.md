@@ -54,7 +54,7 @@ Les trois services `pxl-*` sont relancés seuls (`Restart=always`). Si la previe
 Réglages pour une exploitation dans un car régie :
 - démarrage direct sur la preview, sans bureau ni écran de connexion ;
 - **aucune mise à jour automatique** : on met à jour quand on le décide, en relançant `installer.sh` ;
-- journal persistant borné à 200 Mo ;
+- **écritures sur la carte SD au minimum** : journal en RAM seulement (64 Mo, perdu au redémarrage), ni rsyslog ni vnstat, journaux de Tailscale en RAM — mesuré 0 Kio écrit en 150 s (02/10/2026) ;
 - **chien de garde matériel** : la box redémarre seule si le noyau se fige.
 
 ## Exploiter

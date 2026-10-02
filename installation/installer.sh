@@ -228,14 +228,22 @@ couper() { for u in "$@"; do systemctl disable -q "$u" 2>/dev/null || true; [ $E
 couper gdm3 lightdm sddm getty@tty1
 # Aucune mise à jour automatique pendant une exploitation : on met à jour quand on le décide (installer.sh).
 couper unattended-upgrades apt-daily.timer apt-daily-upgrade.timer
-# Journal persistant mais borné (une coupure de courant ne doit pas effacer la cause de la panne).
+# ÉCRITURES SUR LA CARTE SD : le minimum (décision d'Eliott, 02/10/2026 — « je ne veux pas que ça écrive sans fin »).
+# Mesuré sur la box le 02/10 : 856 Kio en 120 s (≈ 600 Mo/jour) — journal persistant écrit sur la carte (armbian-ramlog
+# ne remonte /var/log en RAM qu'au premier démarrage), sa copie par rsyslog, le tampon de journaux de tailscaled et
+# vnstat. Après les réglages ci-dessous : 0 Kio en 150 s. Le prix : le journal ne survit pas à un redémarrage.
 mkdir -p /etc/systemd/journald.conf.d
-printf '[Journal]\nStorage=persistent\nSystemMaxUse=200M\n' > /etc/systemd/journald.conf.d/pxl.conf
+printf '[Journal]\nStorage=volatile\nRuntimeMaxUse=64M\nForwardToSyslog=no\n' > /etc/systemd/journald.conf.d/pxl.conf
+rm -rf /var/log/journal/* 2>/dev/null || true
+couper rsyslog vnstat
+mkdir -p /etc/systemd/system/tailscaled.service.d   # tampon des journaux de Tailscale en RAM (/run/tailscale)
+printf '[Service]\nEnvironment=TS_LOGS_DIR=/run/tailscale\n' > /etc/systemd/system/tailscaled.service.d/pxl-logs.conf
+rm -f /var/lib/tailscale/tailscaled.log*.txt /var/lib/tailscale/tailscaled.log.conf
 # Au premier démarrage, armbian-fix (ophub, lancé par armbian-firstrun) RÉGÉNÈRE le machine-id après le départ de
 # journald : celui-ci écrit sous l'ancien identifiant et `journalctl` ne trouve rien (vu le 02/10/2026). On le
 # relance alors, pour qu'il rouvre son journal sous le bon nom. Sans effet les démarrages suivants.
 mkdir -p /etc/systemd/system/armbian-firstrun.service.d
-printf '[Service]\nExecStartPost=-/bin/sh -c '"'"'test -d "/var/log/journal/$$(cat /etc/machine-id)" || systemctl restart systemd-journald'"'"'\n' \
+printf '[Service]\nExecStartPost=-/bin/sh -c '"'"'test -d "/run/log/journal/$$(cat /etc/machine-id)" || systemctl restart systemd-journald'"'"'\n' \
   > /etc/systemd/system/armbian-firstrun.service.d/pxl-journal.conf
 # Chien de garde matériel : si le noyau se fige, la box redémarre seule (et relance tout).
 if [ -e /dev/watchdog ] || [ -e /dev/watchdog0 ]; then
