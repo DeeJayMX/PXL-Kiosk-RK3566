@@ -22,10 +22,12 @@ APP_PORT=8765
 APP_ENV=""
 
 # --- La preview à l'écran de la box (secondaire : elle ne doit jamais gêner le serveur) ---------
+# /preview, ou /multiview?vue=a|b|c (PVW | PGM · PGM en grand · PVW en grand) — réglable dans /admin
 PREVIEW_URL=http://127.0.0.1:8765/preview
 # Sortie HDMI. 25p mesuré fluide pour un élément seul (01/10/2026) ; la TV doit déclarer ce mode.
+# 720p par défaut depuis le 02/10 : 2,25× moins de pixels à dessiner pour Chromium (réglable dans /admin).
 SORTIE_NOM=HDMI-A-1
-SORTIE_MODE=1920x1080@25
+SORTIE_MODE=1280x720@25
 
 # --- Santé -------------------------------------------------------------------------------------
 # Petit serveur JSON (température, charge, services, santé du serveur d'habillage)

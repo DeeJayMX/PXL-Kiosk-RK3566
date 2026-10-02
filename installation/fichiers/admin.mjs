@@ -200,6 +200,34 @@ async function regleMode(q) {
   return {};
 }
 
+// ---------------------------------------------------------------- écran de la box (la preview HDMI)
+// Mode de la sortie et page affichée, gardés dans /etc/pxl-kiosk.conf (SORTIE_MODE, PREVIEW_URL) : installer.sh le
+// relit et régénère weston.ini — un réglage fait ici survit donc à une réinstallation. On réécrit aussi la ligne
+// mode= de weston.ini tout de suite, puis on relance pxl-preview (Weston relit sa sortie à son démarrage).
+// 720p : Chromium dessine 2,25× moins de pixels qu'en 1080p — la preview n'a pas besoin de plus (demande d'Eliott, 02/10).
+const CONF = '/etc/pxl-kiosk.conf', WESTON_INI = '/etc/pxl-kiosk/weston.ini';
+const MODES_HDMI = ['1280x720@25', '1280x720@50', '1920x1080@25', '1920x1080@50'];
+const PAGES_ECRAN = { preview: ['Preview', '/preview'], mva: ['Multiview A — PVW | PGM', '/multiview?vue=a'],
+  mvb: ['Multiview B — PGM en grand', '/multiview?vue=b'], mvc: ['Multiview C — PVW en grand', '/multiview?vue=c'] };
+function ecran() {
+  const c = lireConf(), url = c.PREVIEW_URL || '';
+  const page = Object.entries(PAGES_ECRAN).find(([, [, chemin]]) => url.endsWith(chemin))?.[0] || null;
+  return { mode: c.SORTIE_MODE || null, page, url, modes: MODES_HDMI, pages: Object.fromEntries(Object.entries(PAGES_ECRAN).map(([k, [n]]) => [k, n])) };
+}
+const poserLigne = (texte, cle, valeur) => { const re = new RegExp(`^\\s*${cle}=.*$`, 'm'), l = `${cle}=${valeur}`;
+  return re.test(texte) ? texte.replace(re, l) : texte.replace(/\n?$/, '\n') + l + '\n'; };
+const ecrireAtomique = (f, t) => { writeFileSync(f + '.part', t); renameSync(f + '.part', f); };
+async function regleEcran(q) {
+  exiger(MODES_HDMI.includes(q.mode), 'mode HDMI inconnu'); exiger(PAGES_ECRAN[q.page], 'page inconnue');
+  const c = lireConf(), url = `http://127.0.0.1:${c.APP_PORT || 8765}${PAGES_ECRAN[q.page][1]}`;
+  let t = readFileSync(CONF, 'utf8');
+  t = poserLigne(t, 'SORTIE_MODE', q.mode); t = poserLigne(t, 'PREVIEW_URL', `"${url}"`);
+  ecrireAtomique(CONF, t);
+  if (existsSync(WESTON_INI)) ecrireAtomique(WESTON_INI, poserLigne(readFileSync(WESTON_INI, 'utf8'), 'mode', q.mode));
+  const r = await run('systemctl', ['restart', 'pxl-preview']); exiger(r.ok, r.err);
+  return {};
+}
+
 async function machine() {
   const etats = {};
   for (const s of [...RELANCABLES, 'pxl-sante', 'pxl-facade', 'pxl-telecommande', 'pxl-relais', 'seatd', 'chrony', 'tailscaled', 'pxl-admin']) {
@@ -403,7 +431,7 @@ async function api(req, u, q) {
   const p = u.pathname;
   if (p === '/api/etat') {
     const [r, e, w, h, m, s, v] = await Promise.all([reseau(), ethernet(), wifi(), heure(), machine(), surveillance(), versions()]);
-    return { reseau: r, ethernet: e, wifi: w, heure: h, machine: m, materiel: materiel(), surveillance: s, versions: v, mode: mode(), retour: retourEnCours(), retour_s: RETOUR_S };
+    return { reseau: r, ethernet: e, wifi: w, heure: h, machine: m, materiel: materiel(), surveillance: s, versions: v, mode: mode(), ecran: ecran(), retour: retourEnCours(), retour_s: RETOUR_S };
   }
   if (p === '/api/wifi/scan') {
     const r = await run('nmcli', ['-t', '-f', 'SSID,SIGNAL,SECURITY', 'dev', 'wifi', 'list', '--rescan', 'yes'], { timeout: 30000 });
@@ -458,6 +486,7 @@ async function actionPost(p, q) {
     // le signal qu'on peut débrancher. La box ne se rallume qu'en rebranchant l'alimentation.
     case '/api/eteindre': setTimeout(() => run('systemctl', ['poweroff']), 1500); return {};
     case '/api/mode': return regleMode(q);
+    case '/api/ecran': return regleEcran(q);
     // mises à jour depuis GitHub (maj.mjs) — une seule à la fois
     case '/api/maj/verifier': return uneMaj(() => maj.verifier(q.cible));
     case '/api/maj/appliquer': return uneMaj(() => maj.appliquer(q.cible));
