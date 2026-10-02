@@ -85,6 +85,7 @@ ln -sfn "/usr/share/zoneinfo/$FUSEAU" /etc/localtime && echo "$FUSEAU" > /etc/ti
 
 # ---- 1. paquets : PPA Rockchip + pile d'affichage -----------------------------------------------
 export DEBIAN_FRONTEND=noninteractive
+progres 5 "liste des paquets"
 apt-get update -qq
 apt-get install -y -qq --no-install-recommends ca-certificates curl gnupg rsync git xz-utils >/dev/null
 if [ ! -s /etc/apt/keyrings/rockchip-multimedia.asc ]; then
@@ -98,10 +99,15 @@ echo "deb [signed-by=/etc/apt/keyrings/rockchip-multimedia.asc] https://ppa.laun
 printf 'Package: *\nPin: release o=LP-PPA-liujianfeng1994-rockchip-multimedia\nPin-Priority: 600\n' > /etc/apt/preferences.d/rockchip-multimedia
 apt-get update -qq
 dire "paquets (Chromium rkmpp, MPP, libv4l, Weston, seatd)…"; progres 10 "paquets système"
-apt-get install -y -qq --no-install-recommends \
+# l'avancement d'apt (APT::Status-Fd : « dlstatus/pmstatus:paquet:pourcentage:… ») fait avancer la barre de 10 à 60 % :
+# une étape qui installe de nouveaux paquets peut durer plusieurs minutes, et une barre figée se lit comme un plantage
+apt_progres() { local t pct dernier=10 _; while IFS=: read -r t _ pct _; do case $t in dlstatus|pmstatus)
+  pct=${pct%%.*}; pct=$((10 + ${pct:-0} * 50 / 100)); [ $pct -gt $dernier ] && { dernier=$pct; progres $pct "paquets système"; } ;; esac; done; }
+apt-get install -y -qq --no-install-recommends -o APT::Status-Fd=3 \
   chromium chromium-sandbox libv4l-rkmpp libv4l-0t64 v4l-utils librockchip-mpp1 rockchip-multimedia-config \
   weston seatd libgl1-mesa-dri libegl-mesa0 libgbm1 fonts-dejavu-core fonts-liberation chrony bluez \
-  plymouth plymouth-label gcc libc6-dev libdrm-dev >/dev/null   # gcc + libdrm-dev : pxl-mode (1080i), compilé ici
+  plymouth plymouth-label gcc libc6-dev libdrm-dev >/dev/null 3> >(apt_progres)   # gcc + libdrm-dev : pxl-mode (1080i), compilé ici
+progres 60 "paquets système"
 apt-cache policy chromium | grep -q 'Installed:.*rkmpp' || meurs "chromium installé n'est pas celui du PPA (rkmpp)"
 
 # ---- 2. Node 22 officiel (empreinte vérifiée) --------------------------------------------------
@@ -402,7 +408,13 @@ systemctl restart seatd pxl-serveur pxl-sante pxl-admin
 sleep 3
 systemctl restart pxl-preview
 progres 80 "démarrage de l'écran"
-dire "attente du démarrage (30 s)…"; for i in $(seq 30); do sleep 1; progres $((80 + i * 15 / 30)) "démarrage de l'écran"; done
+# attente ACTIVE : on vérifie dès que le serveur et Chromium répondent, au plus 30 s (c'était 30 s fixes, même prêts en 5)
+dire "attente du démarrage (30 s au plus)…"
+for i in $(seq 30); do
+  # le contrôle « rendu GPU » lit une PAGE ouverte : on attend qu'il y en ait une (puis 2 s pour qu'elle se charge)
+  curl -sf -o /dev/null "http://127.0.0.1:$APP_PORT/api/sante" && curl -sf http://127.0.0.1:9222/json 2>/dev/null | grep -q '"type": "page"' && { sleep 2; break; }
+  sleep 1; progres $((80 + i * 15 / 30)) "démarrage de l'écran"
+done
 PROGRES_FINI=1
 if verifier; then dire "✅ box prête — santé : http://$NOM_PXLNET:$SANTE_PORT/sante.txt (par le tailnet)"; progres 100 "box à jour" true
 else dire "🔴 vérification incomplète — journalctl -u pxl-serveur -u pxl-preview"; progres 100 "vérification incomplète" false; fi
