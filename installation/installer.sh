@@ -55,7 +55,8 @@ verifier() {
   v "/dev/video-dec0 (posé par udev)"       "test -f /dev/video-dec0"
   v "/usr/lib64/libv4l2.so (libv4l patchée)" "test -f /usr/lib64/libv4l2.so"
   v "Chromium (DevTools :9222)"             "curl -sf -o /dev/null http://127.0.0.1:9222/json/version"
-  v "sortie HDMI en $SORTIE_MODE"           "grep -q 'Display mode: ${SORTIE_MODE%@*}p${SORTIE_MODE#*@}' /sys/kernel/debug/dri/0/summary"
+  local dm; case "$SORTIE_MODE" in *i@*) dm="${SORTIE_MODE%@*}${SORTIE_MODE#*@}" ;; *) dm="${SORTIE_MODE%@*}p${SORTIE_MODE#*@}" ;; esac
+  v "sortie HDMI en $SORTIE_MODE"           "grep -q 'Display mode: $dm' /sys/kernel/debug/dri/0/summary"
   # Le rendu de la page passe-t-il par le GPU (Panfrost) et pas par SwiftShader ?
   local gl; gl=$(/opt/node/bin/node --input-type=module -e '
     const t=(await (await fetch("http://127.0.0.1:9222/json")).json()).find(t=>t.type==="page");
@@ -100,7 +101,7 @@ dire "paquets (Chromium rkmpp, MPP, libv4l, Weston, seatd)…"; progres 10 "paqu
 apt-get install -y -qq --no-install-recommends \
   chromium chromium-sandbox libv4l-rkmpp libv4l-0t64 v4l-utils librockchip-mpp1 rockchip-multimedia-config \
   weston seatd libgl1-mesa-dri libegl-mesa0 libgbm1 fonts-dejavu-core fonts-liberation chrony bluez \
-  plymouth plymouth-label >/dev/null
+  plymouth plymouth-label gcc libc6-dev libdrm-dev >/dev/null   # gcc + libdrm-dev : pxl-mode (1080i), compilé ici
 apt-cache policy chromium | grep -q 'Installed:.*rkmpp' || meurs "chromium installé n'est pas celui du PPA (rkmpp)"
 
 # ---- 2. Node 22 officiel (empreinte vérifiée) --------------------------------------------------
@@ -162,7 +163,7 @@ idle-time=0
 cursor-size=1
 [output]
 name=$SORTIE_NOM
-mode=$SORTIE_MODE
+mode=$(case "$SORTIE_MODE" in *i@*) echo current ;; *) echo "$SORTIE_MODE" ;; esac)
 EOF
 { echo "HOST=$APP_HOST"; echo "PORT=$APP_PORT"; for e in $APP_ENV; do echo "$e"; done; } > /etc/pxl-kiosk/serveur.env
 
@@ -336,6 +337,8 @@ if [ -s "$R/logo.png" ]; then install -m 644 "$R/logo.png" "$T/logo.png"; else d
 rm -rf "$R"
 printf '[Daemon]\nTheme=pxl\nShowDelay=0\nDeviceTimeout=8\n' > /etc/plymouth/plymouthd.conf
 install -m 755 "$ICI/fichiers/demarrage-etapes.sh"    "$LIB/demarrage-etapes.sh"
+# pxl-mode : pose un mode que Weston ne sait pas choisir (1080i50) — compilé sur la box, jamais de binaire dans le dépôt
+gcc -O2 -I/usr/include/libdrm -o "$LIB/pxl-mode" "$ICI/fichiers/pxl-mode.c" -ldrm || meurs "compilation de pxl-mode impossible"
 install -m 755 "$ICI/fichiers/fin-ecran-demarrage.sh" "$LIB/fin-ecran-demarrage.sh"
 cat > /etc/systemd/system/pxl-plymouth.service <<'EOF'
 [Unit]

@@ -5,6 +5,10 @@
 export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/pxl-preview}
 export LIBSEAT_BACKEND=seatd
 
+# Mode entrelacé (1080i50) : Weston ne sait pas le choisir (il prend le 1080p50) — pxl-mode le pose d'abord, et weston.ini
+# porte alors « mode=current » (installer.sh, /admin). Échec ⇒ on continue : Weston prendra le mode courant, quel qu'il soit.
+case "$SORTIE_MODE" in *i@*) /usr/local/lib/pxl-kiosk/pxl-mode "$SORTIE_MODE" "${SORTIE_NOM:-HDMI-A-1}" || true ;; esac
+
 weston --config=/etc/pxl-kiosk/weston.ini --log="$XDG_RUNTIME_DIR/weston.log" &
 WESTON=$!
 for i in $(seq 100); do [ -S "$XDG_RUNTIME_DIR/wayland-1" ] && break; sleep 0.1; done
