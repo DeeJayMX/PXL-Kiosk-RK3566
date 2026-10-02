@@ -94,3 +94,16 @@ curl http://<NOM_MACHINE>:8790/sante.txt    # depuis le tailnet
 - **Endurance 24 h** : `urban-trail-2026/outils/endurance.js` sur la box, avant un événement.
 - **Preview** mesurée en 25p (01/10) : un élément seul tient 23-26 img/s ; la carte 19 et la séquence complète 13.
   Ça convient pour un moniteur de contrôle, pas pour l'antenne.
+
+## Mises à jour depuis GitHub
+
+Page `/admin` → **Mises à jour** (ou `pxl-kiosk maj verifier|appliquer|revenir app|box`). Deux cibles : l'application
+d'habillage (`DeeJayMX/urban-trail-2026`) et la recette de la box (ce dépôt). **Vérifier** ne change rien et liste les
+commits à venir ; **Appliquer** installe le dernier `main` ; **Revenir** remet la version d'avant.
+
+- Accès : une **clé de déploiement** par dépôt, générée par la box, en lecture seule (la section l'affiche, avec le lien
+  GitHub où la coller). Aucune n'est dans l'image : chaque box a les siennes.
+- Application : recopiée du clone (`/opt/pxl-depots/app`) vers `/opt/pxl-app`, **sans toucher** à `etat-local/` ni à
+  `pages/photos/`. Si seules les pages changent, le serveur n'est **pas** relancé (utile en direct) ; sinon il l'est, et ce
+  qui est à l'antenne repasse en PVW.
+- Box : rejoue `installer.sh` depuis le clone (`pxl-maj-box`, journal dans `/admin`) — **hors direct**.

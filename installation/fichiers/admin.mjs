@@ -19,6 +19,7 @@ import { randomBytes, randomUUID, scryptSync, timingSafeEqual, createHmac, creat
 import { hostname, uptime, release } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import * as maj from './maj.mjs';
 
 const ICI = dirname(fileURLToPath(import.meta.url));
 const MDP = '/etc/pxl-kiosk/admin.mdp';
@@ -28,7 +29,7 @@ const RETOUR_S = 90;                       // délai pour confirmer un changemen
 const NTP_LOCAUX = '/etc/chrony/sources.d/pxl-local.sources';
 const NM_DIR = '/etc/NetworkManager/system-connections';
 const PROFIL_ETH = 'pxl-ethernet';
-const JOURNAUX = ['pxl-serveur', 'pxl-preview', 'pxl-admin', 'pxl-sante', 'chrony', 'NetworkManager', 'tailscaled'];
+const JOURNAUX = ['pxl-maj-box', 'pxl-serveur', 'pxl-preview', 'pxl-admin', 'pxl-sante', 'chrony', 'NetworkManager', 'tailscaled'];
 const RELANCABLES = ['pxl-serveur', 'pxl-preview'];
 
 const lireConf = () => { try { return Object.fromEntries(readFileSync('/etc/pxl-kiosk.conf', 'utf8').split('\n')
@@ -389,6 +390,14 @@ async function wifiParUuid(uuid) {
   exiger(c, 'réseau Wi-Fi inconnu'); return { w, c };
 }
 
+// ---------------------------------------------------------------- mises à jour : une à la fois, refus lisibles
+let majEnCours = false;
+const enRefus = pr => pr.catch(e => { throw e instanceof maj.Refus ? new Refus(e.message) : e; });
+async function uneMaj(f) {
+  exiger(!majEnCours, 'une mise à jour est déjà en cours');
+  majEnCours = true; try { return await enRefus(f()); } finally { majEnCours = false; }
+}
+
 // ---------------------------------------------------------------- routes
 async function api(req, u, q) {
   const p = u.pathname;
@@ -408,6 +417,7 @@ async function api(req, u, q) {
     const r = await run('journalctl', ['-u', q.u, '-n', '200', '--no-pager', '-o', 'short-iso']);
     return { texte: r.out || r.err };
   }
+  if (p === '/api/maj') return enRefus(maj.etat());
   if (req.method !== 'POST') throw new Refus('méthode');
   switch (p) {
     case '/api/ethernet': return regleEthernet(q);
@@ -443,6 +453,10 @@ async function api(req, u, q) {
     // le signal qu'on peut débrancher. La box ne se rallume qu'en rebranchant l'alimentation.
     case '/api/eteindre': setTimeout(() => run('systemctl', ['poweroff']), 1500); return {};
     case '/api/mode': return regleMode(q);
+    // mises à jour depuis GitHub (maj.mjs) — une seule à la fois
+    case '/api/maj/verifier': return uneMaj(() => maj.verifier(q.cible));
+    case '/api/maj/appliquer': return uneMaj(() => maj.appliquer(q.cible));
+    case '/api/maj/revenir': return uneMaj(() => maj.revenir(q.cible));
     case '/api/mdp': exiger(verifierMdp(q.ancien), 'ancien mot de passe faux'); ecrireMdp(q.nouveau); return {};
   }
   throw new Refus('route inconnue');

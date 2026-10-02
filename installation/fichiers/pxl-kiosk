@@ -5,6 +5,7 @@
 #   pxl-kiosk redemarrer [serveur|preview|tout]
 #   pxl-kiosk journal [serveur|preview|sante|admin]   (suivi en direct)
 #   pxl-kiosk mdp-admin             pose le mot de passe de la page d'administration (:8791)
+#   pxl-kiosk maj etat|verifier|appliquer|revenir [app|box]   mises à jour depuis GitHub (comme /admin)
 . /etc/pxl-kiosk.conf
 case "${1:-etat}" in
   etat) curl -s "http://127.0.0.1:${SANTE_PORT:-8790}/sante.txt" || systemctl --no-pager status pxl-serveur pxl-preview ;;
@@ -31,5 +32,8 @@ case "${1:-etat}" in
     read -rsp "nouveau mot de passe d'administration : " m; echo; read -rsp "encore une fois : " m2; echo
     [ "$m" = "$m2" ] || { echo "les deux saisies diffèrent"; exit 1; }
     printf '%s' "$m" | /opt/node/bin/node /usr/local/lib/pxl-kiosk/admin.mjs --mdp ;;
-  *) sed -n '2,7p' "$0"; exit 1 ;;
+  maj)
+    [ "$(id -u)" = 0 ] || { echo "en root"; exit 1; }
+    /opt/node/bin/node /usr/local/lib/pxl-kiosk/maj.mjs "${2:-etat}" "${3:-app}" ;;
+  *) sed -n '2,8p' "$0"; exit 1 ;;
 esac

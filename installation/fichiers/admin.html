@@ -58,6 +58,10 @@
   .bandeau-mode { display: none; background: #4a2a06; border: 1px solid #f5a623; color: #ffd28a; border-radius: 8px; padding: 10px 14px; margin-bottom: 16px; font-weight: 600; }
   .bandeau-mode.visible { display: block; }
   .version { color: var(--doux); font-size: 12px; margin-left: 8px; }
+  .maj { border: 1px solid var(--ligne, #2b3542); border-radius: 8px; padding: 10px 12px; margin: 8px 0; }
+  .maj h3 { margin: 0 0 6px; }
+  .maj ul { margin: 6px 0; padding-left: 18px; font-size: 13px; }
+  .maj code.cle { display: block; word-break: break-all; font-size: 12px; padding: 6px 8px; background: rgba(255,255,255,.05); border-radius: 6px; margin: 6px 0; user-select: all; }
 </style>
 </head>
 <body>
@@ -114,6 +118,14 @@
     </form>
     <p class="note">Démo et Répétition ont leurs propres réglages : ceux de la course ne sont pas touchés. Au redémarrage
       de la box, le mode revient <b>toujours</b> sur Course.</p>
+  </section>
+
+  <section>
+    <h2>Mises à jour</h2>
+    <div id="maj"><p class="note">chargement…</p></div>
+    <p class="note">Source : GitHub. « Vérifier » ne change rien ; « Appliquer » installe la dernière version poussée sur
+      <b>main</b>. L'application garde l'état de la régie et les photos. En direct : si seules les pages changent, le serveur
+      n'est pas relancé (les pages se rechargent d'elles-mêmes).</p>
   </section>
 
   <section>
@@ -206,7 +218,7 @@
     <h3>Journal</h3>
     <div class="ligne">
       <div><select id="j-unite">
-        <option value="pxl-serveur">Serveur d'habillage</option><option value="pxl-preview">Preview</option>
+        <option value="pxl-serveur">Serveur d'habillage</option><option value="pxl-maj-box">Mise à jour de la box</option><option value="pxl-preview">Preview</option>
         <option value="chrony">Heure (chrony)</option><option value="NetworkManager">Réseau</option>
         <option value="tailscaled">Tailscale</option><option value="pxl-admin">Administration</option><option value="pxl-sante">Santé</option>
       </select></div>
@@ -375,7 +387,7 @@ setInterval(() => {
 
 $('#f-connexion').addEventListener('submit', async ev => {
   ev.preventDefault();
-  try { await appel('/api/connexion', { mdp: $('#mdp').value }); $('#mdp').value = ''; await charger(); }
+  try { await appel('/api/connexion', { mdp: $('#mdp').value }); $('#mdp').value = ''; await charger(); chargerMaj(); }
   catch (e) { message(e.message, 'erreur'); }
 });
 $('#b-deconnexion').addEventListener('click', async () => { await appel('/api/deconnexion', {}).catch(() => {}); afficherConnexion(); });
@@ -437,6 +449,41 @@ $('#f-mode').addEventListener('submit', ev => {
   action(ev.submitter, async () => { await appel('/api/mode', { mode: m, rejouer: $('#mode-heure').value, vitesse: $('#mode-vitesse').value });
     delete $('#f-mode').dataset.touche; }, m === 'course' ? 'retour en mode Course' : 'mode appliqué — le serveur redémarre');
 });
+// ---- mises à jour
+let MAJ = null;
+async function chargerMaj() { try { MAJ = await appel('/api/maj'); rendreMaj(); } catch (e) { $('#maj').innerHTML = `<p class="ko">${esc(e.message)}</p>`; } }
+function rendreMaj() {
+  $('#maj').innerHTML = Object.entries(MAJ).map(([c, m]) => {
+    const v = m.verifie, court = x => x ? x.slice(0, 7) : '—';
+    const dispo = !v ? '<span class="note">pas encore vérifié</span>'
+      : v.a_jour ? `<span class="ok">à jour</span> <small class="note">(vérifié ${esc(new Date(v.le).toLocaleString('fr-FR'))})</small>`
+      : `<b class="moyen">v${esc(v.version || '?')} disponible</b> · ${esc(court(v.commit))}${v.fichiers != null ? ` · ${v.fichiers} fichier(s)` : ''}`
+        + (c === 'app' ? ` · ${v.relance ? '<span class="ko">relance du serveur : ce qui est à l\'antenne repasse en PVW</span>' : '<span class="ok">pages seulement : pas de relance</span>'}`
+           : ' · <span class="ko">réinstalle la box : preview et admin relancés — hors direct</span>');
+    return `<div class="maj"><h3>${esc(m.nom)} — v${esc(m.installee || '?')} <small class="note">${m.commit ? esc(court(m.commit)) : 'commit non noté'} · ${esc(m.depot)}</small></h3>
+      <div>${dispo}</div>
+      ${v && !v.a_jour && v.journal.length ? `<ul>${v.journal.map(l => `<li>${esc(l)}</li>`).join('')}</ul>` : ''}
+      <div class="actions">
+        <button type="button" data-maj="verifier" data-cible="${c}">Vérifier</button>
+        <button type="button" class="principal" data-maj="appliquer" data-cible="${c}" ${v && !v.a_jour ? '' : 'disabled'}>Appliquer</button>
+        <button type="button" data-maj="revenir" data-cible="${c}" ${m.precedent ? '' : 'disabled'} title="${m.precedent ? 'revenir à ' + esc(court(m.precedent)) : 'aucune version précédente'}">Revenir à la précédente</button>
+      </div>
+      <details><summary class="note">Clé de la box pour GitHub (à faire une fois)</summary>
+        <p class="note">Dans <a href="https://github.com/${esc(m.depot)}/settings/keys/new" target="_blank" rel="noopener">GitHub → ${esc(m.depot)} → Deploy keys → Add</a> :
+        titre libre, coller cette clé, <b>sans</b> cocher « Allow write access ».</p>
+        <code class="cle">${esc(m.cle || '—')}</code></details></div>`;
+  }).join('');
+}
+$('#maj').addEventListener('click', ev => {
+  const b = ev.target.closest('button[data-maj]'); if (!b) return;
+  const c = b.dataset.cible, quoi = b.dataset.maj, v = MAJ[c].verifie;
+  if (quoi === 'appliquer' && !confirm(c === 'app'
+    ? (v && v.relance ? 'Appliquer la mise à jour de l\'habillage ? Le serveur sera relancé : ce qui est à l\'antenne repasse en PVW.' : 'Appliquer ? Pages seulement : les pages ouvertes (vMix compris) vont se recharger.')
+    : 'Réinstaller la box avec la nouvelle recette ? Preview et administration redémarrent (quelques minutes) : à faire HORS DIRECT.')) return;
+  if (quoi === 'revenir' && !confirm('Revenir à la version précédente ?' + (c === 'app' ? ' Le serveur sera relancé.' : ' La box sera réinstallée (hors direct).'))) return;
+  action(b, async () => { await appel('/api/maj/' + quoi, { cible: c }); await chargerMaj(); },
+    quoi === 'verifier' ? 'vérifié' : c === 'box' ? 'réinstallation lancée — journal : « Mise à jour de la box »' : 'mise à jour appliquée');
+});
 $('#b-journal').addEventListener('click', ev => action(ev.target, async () => {
   const r = await appel('/api/journal?u=' + encodeURIComponent($('#j-unite').value));
   const p = $('#journal'); p.classList.remove('cache'); p.textContent = r.texte; p.scrollTop = p.scrollHeight;
@@ -447,7 +494,7 @@ $('#f-mdp').addEventListener('submit', ev => {
     $('#mdp-ancien').value = ''; $('#mdp-nouveau').value = ''; }, 'mot de passe changé');
 });
 setInterval(() => { if (E && !document.hidden && !document.querySelector('button:disabled')) charger(); }, 15000);
-charger();
+charger().then(() => { if (E) chargerMaj(); });
 </script>
 </body>
 </html>

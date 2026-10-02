@@ -155,6 +155,7 @@ rm -f "$R/root/.not_logged_in_yet"                      # assistant de première
 rm -f "$R"/etc/ssh/ssh_host_*                           # régénérées au premier démarrage, propres à chaque box
 : > "$R/etc/machine-id"; rm -f "$R/var/lib/dbus/machine-id"   # idem (DHCP, journal, Tailscale)
 rm -rf "$R/var/lib/tailscale"/*                         # aucune identité de nœud dans l'image
+rm -rf "$R/etc/pxl-kiosk/github" "$R/opt/pxl-depots" "$R/etc/pxl-kiosk/maj.json"   # clés GitHub : propres à chaque box, générées sur place
 chroot "$R" apt-get clean
 rm -f "$R/etc/resolv.conf"; [ -n "$RESOLV" ] && ln -s "$RESOLV" "$R/etc/resolv.conf"
 if [ -n "$RETOUCHE" ]; then echo "retouchée le $(date -Is)" >> "$R/etc/pxl-kiosk/image"
