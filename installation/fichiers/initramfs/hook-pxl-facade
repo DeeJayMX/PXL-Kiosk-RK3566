@@ -1,0 +1,9 @@
+#!/bin/sh
+# initramfs-tools : embarque l'afficheur de façade (ht1628) dans l'initramfs, pour afficher « boot » dès les
+# premières secondes (scripts/init-top/pxl-facade). Sans le binaire : rien, l'initramfs reste celui d'origine.
+PREREQ=""
+prereqs() { echo "$PREREQ"; }
+case "$1" in prereqs) prereqs; exit 0 ;; esac
+. /usr/share/initramfs-tools/hook-functions
+[ -x /usr/local/bin/ht1628 ] && copy_exec /usr/local/bin/ht1628 /usr/bin/ht1628
+exit 0

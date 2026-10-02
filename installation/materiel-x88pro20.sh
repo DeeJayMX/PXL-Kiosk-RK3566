@@ -47,6 +47,15 @@ EOF
   mkdir -p "$CIBLE/etc/systemd/system/multi-user.target.wants"
   ln -sfn /etc/systemd/system/pxl-facade.service "$CIBLE/etc/systemd/system/multi-user.target.wants/pxl-facade.service"
   dire "façade HT1628 : binaire et service posés (pxl-facade)"
+  # « boot » sur la façade dès l'initramfs (~9 s après le noyau au lieu de ~19 s) : archive COLLÉE à l'initramfs
+  # d'origine, jamais reconstruit (voir fichiers/initramfs/facade-initramfs.sh). Le hook garde la façade si quelqu'un
+  # lance un jour update-initramfs.
+  install -m 755 "$(dirname "$0")/fichiers/initramfs/hook-pxl-facade" "$CIBLE/etc/initramfs-tools/hooks/pxl-facade"
+  install -m 755 "$(dirname "$0")/fichiers/initramfs/init-top-pxl-facade" "$CIBLE/etc/initramfs-tools/scripts/init-top/pxl-facade"
+  mkdir -p "$CIBLE/usr/local/lib/pxl-kiosk/initramfs"
+  install -m 755 "$(dirname "$0")/fichiers/initramfs/facade-initramfs.sh" "$(dirname "$0")/fichiers/initramfs/init-top-pxl-facade" "$CIBLE/usr/local/lib/pxl-kiosk/initramfs/"
+  if [ "$CIBLE" = / ]; then bash /usr/local/lib/pxl-kiosk/initramfs/facade-initramfs.sh
+  else dire "⚠️ « boot » sur la façade : à poser SUR LA BOX (uname -r de l'hôte ≠ cible) — /usr/local/lib/pxl-kiosk/initramfs/facade-initramfs.sh"; fi
 else
   dire "⚠️ pas de ht1628 sur la source — façade non installée"
 fi

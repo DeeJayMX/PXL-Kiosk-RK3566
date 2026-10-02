@@ -1,0 +1,12 @@
+#!/bin/sh
+# « boot » + pictogramme PWR sur la façade, dès le début de l'initramfs : on voit que la box a pris le jus.
+# Le HT1628 garde l'affichage tout seul jusqu'à ce que pxl-facade (l'horloge) prenne le relais.
+# Ne bloque JAMAIS le démarrage : en arrière-plan, erreurs ignorées, sortie 0 quoi qu'il arrive.
+PREREQ=""
+prereqs() { echo "$PREREQ"; }
+case "$1" in prereqs) prereqs; exit 0 ;; esac
+# Témoin pour vérifier après coup (le /run de l'initramfs est repris par le système) : code de sortie et instant.
+if [ -x /usr/bin/ht1628 ]; then
+  ( /usr/bin/ht1628 --texte boot 04 >/dev/null 2>&1; echo "rc=$? uptime=$(cut -d' ' -f1 /proc/uptime)" > /run/pxl-facade-initramfs ) &
+fi
+exit 0
