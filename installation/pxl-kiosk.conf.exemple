@@ -4,7 +4,7 @@
 # d'environnement au moment de l'installation, il n'est jamais écrit sur le disque.
 
 # Nom de la machine (hostname et nom sur le tailnet)
-NOM_MACHINE=pxl-habillage
+NOM_MACHINE=PXLnode-UrbanTrail2026
 # Fuseau horaire (le serveur d'habillage affiche l'heure locale)
 FUSEAU=Europe/Paris
 
@@ -22,8 +22,8 @@ APP_PORT=8765
 APP_ENV=""
 
 # --- La preview à l'écran de la box (secondaire : elle ne doit jamais gêner le serveur) ---------
-# /preview, ou /multiview?vue=a|b|c (PVW | PGM · PGM en grand · PVW en grand) — réglable dans /admin
-PREVIEW_URL=http://127.0.0.1:8765/preview
+# /ecran : la page choisie dans la console de l'habillage (⚙ Réglages : Preview ou Multiview A/B/C), bascule à chaud
+PREVIEW_URL=http://127.0.0.1:8765/ecran
 # Sortie HDMI. 25p mesuré fluide pour un élément seul (01/10/2026) ; la TV doit déclarer ce mode.
 # 720p par défaut depuis le 02/10 : 2,25× moins de pixels à dessiner pour Chromium (réglable dans /admin).
 SORTIE_NOM=HDMI-A-1

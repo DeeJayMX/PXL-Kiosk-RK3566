@@ -200,29 +200,20 @@ async function regleMode(q) {
   return {};
 }
 
-// ---------------------------------------------------------------- écran de la box (la preview HDMI)
-// Mode de la sortie et page affichée, gardés dans /etc/pxl-kiosk.conf (SORTIE_MODE, PREVIEW_URL) : installer.sh le
-// relit et régénère weston.ini — un réglage fait ici survit donc à une réinstallation. On réécrit aussi la ligne
-// mode= de weston.ini tout de suite, puis on relance pxl-preview (Weston relit sa sortie à son démarrage).
-// 720p : Chromium dessine 2,25× moins de pixels qu'en 1080p — la preview n'a pas besoin de plus (demande d'Eliott, 02/10).
+// ---------------------------------------------------------------- sortie HDMI du PXLnode (résolution physique)
+// Gardée dans /etc/pxl-kiosk.conf (SORTIE_MODE) : installer.sh la relit et régénère weston.ini — un réglage fait ici
+// survit donc à une réinstallation. On réécrit aussi la ligne mode= de weston.ini tout de suite, puis on relance
+// pxl-preview (Weston relit sa sortie à son démarrage). 720p : Chromium dessine 2,25× moins de pixels qu'en 1080p.
+// CE QUI s'affiche (Preview / Multiview) se choisit dans la console de l'habillage (⚙ Réglages) : la box ouvre /ecran.
 const CONF = '/etc/pxl-kiosk.conf', WESTON_INI = '/etc/pxl-kiosk/weston.ini';
 const MODES_HDMI = ['1280x720@25', '1280x720@50', '1920x1080@25', '1920x1080@50'];
-const PAGES_ECRAN = { preview: ['Preview', '/preview'], mva: ['Multiview A — PVW | PGM', '/multiview?vue=a'],
-  mvb: ['Multiview B — PGM en grand', '/multiview?vue=b'], mvc: ['Multiview C — PVW en grand', '/multiview?vue=c'] };
-function ecran() {
-  const c = lireConf(), url = c.PREVIEW_URL || '';
-  const page = Object.entries(PAGES_ECRAN).find(([, [, chemin]]) => url.endsWith(chemin))?.[0] || null;
-  return { mode: c.SORTIE_MODE || null, page, url, modes: MODES_HDMI, pages: Object.fromEntries(Object.entries(PAGES_ECRAN).map(([k, [n]]) => [k, n])) };
-}
+const ecran = () => ({ mode: lireConf().SORTIE_MODE || null, modes: MODES_HDMI });
 const poserLigne = (texte, cle, valeur) => { const re = new RegExp(`^\\s*${cle}=.*$`, 'm'), l = `${cle}=${valeur}`;
   return re.test(texte) ? texte.replace(re, l) : texte.replace(/\n?$/, '\n') + l + '\n'; };
 const ecrireAtomique = (f, t) => { writeFileSync(f + '.part', t); renameSync(f + '.part', f); };
 async function regleEcran(q) {
-  exiger(MODES_HDMI.includes(q.mode), 'mode HDMI inconnu'); exiger(PAGES_ECRAN[q.page], 'page inconnue');
-  const c = lireConf(), url = `http://127.0.0.1:${c.APP_PORT || 8765}${PAGES_ECRAN[q.page][1]}`;
-  let t = readFileSync(CONF, 'utf8');
-  t = poserLigne(t, 'SORTIE_MODE', q.mode); t = poserLigne(t, 'PREVIEW_URL', `"${url}"`);
-  ecrireAtomique(CONF, t);
+  exiger(MODES_HDMI.includes(q.mode), 'mode HDMI inconnu');
+  ecrireAtomique(CONF, poserLigne(readFileSync(CONF, 'utf8'), 'SORTIE_MODE', q.mode));
   if (existsSync(WESTON_INI)) ecrireAtomique(WESTON_INI, poserLigne(readFileSync(WESTON_INI, 'utf8'), 'mode', q.mode));
   const r = await run('systemctl', ['restart', 'pxl-preview']); exiger(r.ok, r.err);
   return {};

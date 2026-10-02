@@ -21,6 +21,9 @@ dire()  { echo "[$(date +%T)] $*"; }
 meurs() { echo "🔴 $*" >&2; exit 1; }
 [ "$(id -u)" = 0 ] || meurs "à lancer en root"
 [ -f /etc/pxl-kiosk.conf ] || { cp "$ICI/pxl-kiosk.conf.exemple" /etc/pxl-kiosk.conf; meurs "/etc/pxl-kiosk.conf créé depuis l'exemple : l'adapter, puis relancer"; }
+# 02/10 : l'écran de la box ouvre /ecran (page choisie dans la console : Preview ou Multiview) ; une conf qui pointait
+# encore sur /preview y passe — même page par défaut, mais pilotable depuis la console.
+sed -i -E 's#^(PREVIEW_URL="?http://127\.0\.0\.1:[0-9]+)/preview("?)$#\1/ecran\2#' /etc/pxl-kiosk.conf
 . /etc/pxl-kiosk.conf
 ADMIN_PORT=${ADMIN_PORT:-8791}; SANTE_PORT=${SANTE_PORT:-8790}
 . /etc/os-release
