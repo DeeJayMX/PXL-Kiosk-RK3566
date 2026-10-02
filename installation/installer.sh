@@ -86,7 +86,8 @@ apt-get update -qq
 dire "paquets (Chromium rkmpp, MPP, libv4l, Weston, seatd)…"
 apt-get install -y -qq --no-install-recommends \
   chromium chromium-sandbox libv4l-rkmpp libv4l-0t64 v4l-utils librockchip-mpp1 rockchip-multimedia-config \
-  weston seatd libgl1-mesa-dri libegl-mesa0 libgbm1 fonts-dejavu-core fonts-liberation chrony bluez >/dev/null
+  weston seatd libgl1-mesa-dri libegl-mesa0 libgbm1 fonts-dejavu-core fonts-liberation chrony bluez \
+  plymouth plymouth-label >/dev/null
 apt-cache policy chromium | grep -q 'Installed:.*rkmpp' || meurs "chromium installé n'est pas celui du PPA (rkmpp)"
 
 # ---- 2. Node 22 officiel (empreinte vérifiée) --------------------------------------------------
@@ -180,6 +181,9 @@ SupplementaryGroups=video render input
 RuntimeDirectory=pxl-preview
 RuntimeDirectoryMode=0700
 Environment=XDG_RUNTIME_DIR=/run/pxl-preview
+# en root (+) : referme l'écran de démarrage PXL (Plymouth tient l'affichage) une fois le serveur prêt
+ExecStartPre=+$LIB/fin-ecran-demarrage.sh
+TimeoutStartSec=150
 ExecStart=$LIB/preview.sh
 Restart=always
 RestartSec=3
@@ -293,6 +297,67 @@ printf 'server ntp.obspm.fr iburst prefer\nserver ntp1.jussieu.fr iburst\npool f
 systemctl enable -q chrony chrony-wait.service
 mkdir -p /etc/systemd/system/chrony-wait.service.d
 printf '[Service]\nTimeoutStartSec=60\n' > /etc/systemd/system/chrony-wait.service.d/pxl.conf
+
+# ---- 6 ter. l'écran de démarrage PXL : grand logo + étapes (réseau, heure, Tailscale, serveur, preview) ----------
+# Thème Plymouth « pxl » (module script). Plymouth est lancé DEPUIS LE SYSTÈME (pxl-plymouth.service) et non depuis
+# l'initramfs : le paramètre « splash » ferait démarrer celui de l'initramfs, qui ne contient que le module texte, et
+# reconstruire l'initramfs (uInitrd) est le seul geste de cette recette qui pourrait empêcher la box de démarrer.
+# Prix : l'écran apparaît ~15 s après l'allumage (avant : le logo du U-Boot Android, en eMMC — on n'y touche pas).
+T=/usr/share/plymouth/themes/pxl
+mkdir -p "$T"
+install -m 644 "$ICI/fichiers/plymouth-pxl/pxl.plymouth" "$ICI/fichiers/plymouth-pxl/pxl.script" "$T/"
+# le logo : SVG rendu en PNG par le Chromium de la box (aucun binaire dans le dépôt), fond transparent
+R=$(mktemp -d)
+cp "$ICI/fichiers/plymouth-pxl/logo-pxl.svg" "$R/"
+printf '<!doctype html><style>html,body{margin:0;background:transparent}img{display:block;width:1400px;height:780px}</style><img src="logo-pxl.svg">' > "$R/l.html"
+chromium --headless=new --no-sandbox --disable-gpu --hide-scrollbars --default-background-color=00000000 \
+  --user-data-dir="$R/profil" --window-size=1400,780 --screenshot="$R/logo.png" "file://$R/l.html" >/dev/null 2>&1 || true
+if [ -s "$R/logo.png" ]; then install -m 644 "$R/logo.png" "$T/logo.png"; else dire "⚠️ logo de démarrage non rendu (Chromium) : l'écran montrera « pxl mstrs. » en texte"; fi
+rm -rf "$R"
+printf '[Daemon]\nTheme=pxl\nShowDelay=0\nDeviceTimeout=8\n' > /etc/plymouth/plymouthd.conf
+install -m 755 "$ICI/fichiers/demarrage-etapes.sh"    "$LIB/demarrage-etapes.sh"
+install -m 755 "$ICI/fichiers/fin-ecran-demarrage.sh" "$LIB/fin-ecran-demarrage.sh"
+cat > /etc/systemd/system/pxl-plymouth.service <<'EOF'
+[Unit]
+Description=PXL — écran de démarrage (Plymouth, thème pxl), lancé depuis le système
+DefaultDependencies=no
+After=systemd-udev-trigger.service systemd-udevd.service
+Before=pxl-etapes.service
+ConditionKernelCommandLine=!plymouth.enable=0
+[Service]
+Type=forking
+# --ignore-serial-consoles : sinon la console série (ttyS2) impose le thème texte intégré (« details forced », vu le 02/10)
+ExecStart=/usr/sbin/plymouthd --mode=boot --pid-file=/run/plymouth/pid --attach-to-session --ignore-serial-consoles
+ExecStartPost=-/usr/bin/plymouth show-splash
+RemainAfterExit=yes
+KillMode=mixed
+SendSIGKILL=no
+[Install]
+WantedBy=sysinit.target
+EOF
+cat > /etc/systemd/system/pxl-etapes.service <<EOF
+[Unit]
+Description=PXL — étapes du démarrage sur l'écran de démarrage
+After=pxl-plymouth.service
+[Service]
+Type=simple
+ExecStart=$LIB/demarrage-etapes.sh
+[Install]
+WantedBy=multi-user.target
+EOF
+# Ubuntu referme Plymouth dès multi-user.target (bien avant l'heure et le serveur) : c'est la preview qui le referme
+systemctl mask -q plymouth-quit.service plymouth-quit-wait.service 2>/dev/null || true
+systemctl enable -q pxl-plymouth.service pxl-etapes.service
+# Démarrage sans texte : noyau muet, pas de pingouin, pas de curseur, pas d'état systemd à l'écran (armbianEnv.txt, idempotent)
+E=/boot/armbianEnv.txt
+if [ -f "$E" ]; then
+  sed -i 's/^verbosity=.*/verbosity=1/; s/^bootlogo=.*/bootlogo=false/' "$E"
+  # plymouth.graphical : sans lui, plymouthd reste en mode texte (« renderers are being explicitly skipped », vu le 02/10) ;
+  # PAS « splash », qui réveillerait aussi le Plymouth de l'initramfs (texte seulement)
+  ARGS="quiet logo.nologo vt.global_cursor_default=0 systemd.show_status=false plymouth.ignore-serial-consoles plymouth.graphical"
+  grep -q '^extraargs=' "$E" || echo 'extraargs=' >> "$E"
+  for a in $ARGS; do grep -q "^extraargs=.*\b${a%%=*}\b" "$E" || sed -i "s|^extraargs=\(.*\)|extraargs=\1 $a|; s|^extraargs= |extraargs=|" "$E"; done
+fi
 
 # ---- 7. application, puis démarrage -----------------------------------------------------------
 [ $EN_LIGNE = 1 ] && { systemctl daemon-reload; systemctl restart systemd-journald; }

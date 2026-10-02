@@ -1,0 +1,80 @@
+# Écran de démarrage PXL (Plymouth, module « script ») : grand logo centré, puis les étapes du démarrage.
+# Les étapes arrivent par `plymouth update --status="pxl|K|S|détail"` (envoyées par demarrage-etapes.sh) :
+#   K = 1 système · 2 réseau · 3 heure · 4 Tailscale · 5 serveur d'habillage · 6 preview · F = pied de page
+#   S = 0 en attente · 1 en cours · 2 fait · 3 en défaut · 4 avertissement
+# Le langage de script de Plymouth n'a pas de découpage de chaîne : le format est FIXE (K en position 4, S en 6, détail à 8).
+# Les autres messages de mise à jour sont ceux de systemd (nom de l'unité qui démarre) : ils servent de détail à « Système ».
+
+W = Window.GetWidth(); H = Window.GetHeight();
+Window.SetBackgroundTopColor(0.043, 0.051, 0.071);
+Window.SetBackgroundBottomColor(0.027, 0.031, 0.043);
+k = H / 1080;                       # échelle : tout est pensé pour 1080 lignes
+fun police(taille, gras) { if (gras) return "DejaVu Sans Bold " + Math.Int(taille * k); return "DejaVu Sans " + Math.Int(taille * k); }
+
+# ---- logo, en grand, centré dans le haut de l'écran (rendu depuis logo-pxl.svg à l'installation)
+logo = Image("logo.png");
+if (logo) {
+  lw = W * 0.34; lh = logo.GetHeight() * lw / logo.GetWidth();
+  if (lh > H * 0.36) { lh = H * 0.36; lw = logo.GetWidth() * lh / logo.GetHeight(); }
+  logo_sprite = Sprite(logo.Scale(lw, lh));
+  logo_sprite.SetPosition(W / 2 - lw / 2, H * 0.31 - lh / 2, 1);
+} else {
+  logo_sprite = Sprite(Image.Text("pxl mstrs.", 1, 1, 1, 1, police(90, 1)));
+  logo_sprite.SetPosition(W / 2 - logo_sprite.GetImage().GetWidth() / 2, H * 0.25, 1);
+}
+
+# ---- les étapes
+num["1"] = 1; num["2"] = 2; num["3"] = 3; num["4"] = 4; num["5"] = 5; num["6"] = 6;
+noms[1] = "Système"; noms[2] = "Réseau"; noms[3] = "Heure"; noms[4] = "Tailscale"; noms[5] = "Serveur d'habillage"; noms[6] = "Preview";
+x0 = W / 2 - 330 * k; y0 = H * 0.58; pas = 46 * k;
+for (i = 1; i <= 6; i++) {
+  etat[i] = "0"; detail[i] = "";
+  icone[i] = Sprite(); icone[i].SetPosition(x0, y0 + (i - 1) * pas, 2);
+  libelle[i] = Sprite(Image.Text(noms[i], 0.92, 0.93, 0.95, 1, police(21, 1)));
+  libelle[i].SetPosition(x0 + 44 * k, y0 + (i - 1) * pas, 2);
+  texte[i] = Sprite(); texte[i].SetPosition(x0 + 300 * k, y0 + (i - 1) * pas + 3 * k, 2);
+}
+pied = Sprite(); pied.SetPosition(W / 2, H * 0.94, 2);
+
+fun dessiner(i) {
+  s = etat[i];
+  if (s == "2") img = Image.Text("✓", 0.18, 0.80, 0.50, 1, police(22, 1));          # fait : vert
+  else if (s == "3") img = Image.Text("✕", 0.95, 0.30, 0.32, 1, police(22, 1));     # défaut : rouge
+  else if (s == "4") img = Image.Text("!", 0.95, 0.65, 0.23, 1, police(22, 1));     # avertissement : orange
+  else if (s == "1") img = Image.Text("●", 0.24, 0.78, 0.92, 1, police(20, 0));     # en cours : cyan, clignote
+  else img = Image.Text("○", 0.45, 0.48, 0.55, 1, police(20, 0));                    # en attente : gris
+  icone[i].SetImage(img);
+  if (s == "3") c = 0.95; else c = 0.62;
+  texte[i].SetImage(Image.Text(detail[i], c, c * 0.7 + 0.2, c * 0.7 + 0.25, 1, police(17, 0)));
+}
+for (i = 1; i <= 6; i++) dessiner(i);
+
+fun a_jour(status) {
+  if (status.SubString(0, 4) == "pxl|") {
+    K = status.CharAt(4); S = status.CharAt(6); D = status.SubString(8, 400);
+    if (K == "F") {
+      img = Image.Text(D, 0.45, 0.48, 0.55, 1, police(15, 0));
+      pied.SetImage(img); pied.SetX(W / 2 - img.GetWidth() / 2);
+      return;
+    }
+    i = num[K];   # pas de conversion nombre → texte sûre dans ce langage : une table
+    if (i) { etat[i] = S; detail[i] = D; dessiner(i); }
+  } else if (etat[1] != "2") {
+    # message de systemd : l'unité qui démarre, en détail de « Système »
+    etat[1] = "1"; detail[1] = status; dessiner(1);
+  }
+}
+Plymouth.SetUpdateStatusFunction(a_jour);
+
+# ---- clignotement des étapes en cours
+t = 0;
+fun rafraichir() {
+  t++;
+  o = 0.35 + 0.65 * Math.Abs(Math.Sin(t / 18));
+  for (i = 1; i <= 6; i++) { if (etat[i] == "1") icone[i].SetOpacity(o); else icone[i].SetOpacity(1); }
+}
+Plymouth.SetRefreshFunction(rafraichir);
+
+# les messages de Plymouth lui-même (mot de passe, erreur) : en pied de page, pour ne jamais rester invisibles
+fun message(texte_) { a_jour("pxl|F|0|" + texte_); }
+Plymouth.SetDisplayMessageFunction(message);

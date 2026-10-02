@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=PXL Mstrs
+Description=Écran de démarrage de la box PXL : logo et étapes du démarrage (réseau, heure, Tailscale, serveur, preview)
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/pxl
+ScriptFile=/usr/share/plymouth/themes/pxl/pxl.script
