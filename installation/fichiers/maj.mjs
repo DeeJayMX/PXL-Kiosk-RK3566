@@ -104,6 +104,14 @@ async function poser(c, commit) {
       '--exclude', 'node_modules', clone(c) + '/', APP_DIR + '/']);
     exiger(s.ok, `rsync : ${s.err}`);
     await run('chown', ['-R', 'pxl:pxl', APP_DIR]);
+    // et la SOURCE locale que installer.sh recopie (APP_SOURCE) : sinon une réinstallation de la box ramènerait
+    // l'application d'avant cette mise à jour (vu au premier essai de « box » depuis /admin, 02/10)
+    const src = conf.APP_SOURCE;
+    if (src && src.startsWith('/') && src !== APP_DIR && existsSync(src)) {
+      const t = await run('rsync', ['-a', '--delete', '--exclude', '.git', '--exclude', 'etat-local', '--exclude', 'pages/photos',
+        '--exclude', 'node_modules', clone(c) + '/', src + '/']);
+      exiger(t.ok, `rsync (source) : ${t.err}`);
+    }
   }
 }
 export async function appliquer(c, { commit = null, relancer = null } = {}) {
