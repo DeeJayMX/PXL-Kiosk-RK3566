@@ -22,6 +22,7 @@ meurs() { echo "🔴 $*" >&2; exit 1; }
 [ "$(id -u)" = 0 ] || meurs "à lancer en root"
 [ -f /etc/pxl-kiosk.conf ] || { cp "$ICI/pxl-kiosk.conf.exemple" /etc/pxl-kiosk.conf; meurs "/etc/pxl-kiosk.conf créé depuis l'exemple : l'adapter, puis relancer"; }
 . /etc/pxl-kiosk.conf
+ADMIN_PORT=${ADMIN_PORT:-8791}; SANTE_PORT=${SANTE_PORT:-8790}
 . /etc/os-release
 PPA=liujianfeng1994/rockchip-multimedia
 LIB=/usr/local/lib/pxl-kiosk
@@ -35,6 +36,8 @@ verifier() {
   v "serveur d'habillage répond (:$APP_PORT)" "curl -sf -o /dev/null http://127.0.0.1:$APP_PORT/api/sante"
   v "pxl-preview actif"                     "systemctl is-active -q pxl-preview"
   v "pxl-sante répond (:$SANTE_PORT)"       "curl -sf -o /dev/null http://127.0.0.1:$SANTE_PORT/sante"
+  v "pxl-admin répond (:$ADMIN_PORT)"       "curl -sf -o /dev/null http://127.0.0.1:$ADMIN_PORT/"
+  v "mot de passe d'administration posé"    "test -s /etc/pxl-kiosk/admin.mdp"
   v "/dev/mpp_service (décodeur matériel)"  "test -c /dev/mpp_service"
   v "/dev/video-dec0 (posé par udev)"       "test -f /dev/video-dec0"
   v "/usr/lib64/libv4l2.so (libv4l patchée)" "test -f /usr/lib64/libv4l2.so"
@@ -125,6 +128,8 @@ install -m 755 "$ICI/fichiers/preview.sh" "$LIB/preview.sh"
 mkdir -p /etc/chromium/policies/managed
 printf '{\n  "TranslateEnabled": false\n}\n' > /etc/chromium/policies/managed/pxl.json
 install -m 644 "$ICI/fichiers/sante.mjs"  "$LIB/sante.mjs"
+install -m 644 "$ICI/fichiers/admin.mjs"  "$LIB/admin.mjs"
+install -m 644 "$ICI/fichiers/admin.html" "$LIB/admin.html"
 install -m 755 "$ICI/fichiers/pxl-kiosk"  /usr/local/bin/pxl-kiosk
 install -m 755 "$ICI/fichiers/premier-demarrage.sh" "$LIB/premier-demarrage.sh"
 # require-input=false : sans clavier branché (télécommandes IR/CEC retirées à Weston), Weston refuse sinon de
@@ -199,6 +204,26 @@ Nice=5
 [Install]
 WantedBy=multi-user.target
 EOF
+# Administration par le navigateur (:$ADMIN_PORT, et :$SANTE_PORT/admin) : réseau, heure, machine. En root (nmcli,
+# chronyc, date, systemctl), protégée par un mot de passe dédié — ADMIN_MDP=… à l'installation, sinon « pxl-kiosk mdp-admin ».
+cat > /etc/systemd/system/pxl-admin.service <<EOF
+[Unit]
+Description=PXL — administration de la box (:$ADMIN_PORT) : réseau, heure, machine
+After=network-online.target NetworkManager.service chrony.service
+[Service]
+ExecStart=/opt/node/bin/node $LIB/admin.mjs
+Restart=always
+RestartSec=3
+Nice=5
+MemoryMax=150M
+[Install]
+WantedBy=multi-user.target
+EOF
+if [ -n "${ADMIN_MDP:-}" ]; then
+  printf '%s' "$ADMIN_MDP" | /opt/node/bin/node "$LIB/admin.mjs" --mdp
+elif [ ! -s /etc/pxl-kiosk/admin.mdp ]; then
+  dire "⚠️ pas de mot de passe d'administration : le poser avec « pxl-kiosk mdp-admin » (ou ADMIN_MDP=… à l'installation)"
+fi
 cat > /etc/systemd/system/pxl-premier-demarrage.service <<EOF
 [Unit]
 Description=PXL — premier démarrage (clés SSH propres à la box, entrée dans le tailnet)
@@ -274,13 +299,13 @@ printf '[Service]\nTimeoutStartSec=60\n' > /etc/systemd/system/chrony-wait.servi
 dire "application depuis $APP_SOURCE…"
 /usr/local/bin/pxl-kiosk maj-app >/dev/null || meurs "copie de l'application impossible"
 if [ $EN_LIGNE = 0 ]; then
-  systemctl enable -q seatd pxl-serveur pxl-preview pxl-sante pxl-premier-demarrage
+  systemctl enable -q seatd pxl-serveur pxl-preview pxl-sante pxl-admin pxl-premier-demarrage
   dire "✅ image préparée — tout démarrera au premier démarrage de la box"; exit 0
 fi
 systemctl enable -q pxl-premier-demarrage
 udevadm trigger --subsystem-match=misc --action=change 2>/dev/null || true   # pose /dev/video-dec0 tout de suite
-systemctl enable -q seatd pxl-serveur pxl-preview pxl-sante
-systemctl restart seatd pxl-serveur pxl-sante
+systemctl enable -q seatd pxl-serveur pxl-preview pxl-sante pxl-admin
+systemctl restart seatd pxl-serveur pxl-sante pxl-admin
 sleep 3
 systemctl restart pxl-preview
 dire "attente du démarrage (30 s)…"; sleep 30

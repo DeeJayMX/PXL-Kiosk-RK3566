@@ -49,6 +49,8 @@ TS_AUTHKEY=tskey-… bash installation/installer.sh
 | `pxl-secours-reseau` · `pxl-cec-nom` · `pxl-relais` · `turbohq-console` | repris de la TurboNode : adresse de secours **192.168.55.230/24** sans DHCP · nom CEC « PXL HABILLAGE » · relais TurboHQ :8080 (**sans** la clé ni les certificats de la TurboNode) · console :8088 | — |
 | `pxl-telecommande` | **OK** = recharger la preview (`rELd`) · **Menu/Accueil** = IP sur la façade · **Power maintenu 3 s** = redémarrer (3-2-1, `boot`). Télécommande IR **et** TV par HDMI-CEC ; ces touches sont **retirées à Weston/Chromium et à logind** (sinon « Retour » quittait la preview et « Power » éteignait la box) | — |
 
+| `pxl-admin` | **page d'administration** `http://<box>:8791/` (aussi `:8790/admin`), mot de passe dédié : état réseau, **Ethernet** DHCP / IP fixe, **Wi-Fi** (recherche, ajout, priorité, suppression), **heure** (sources, serveurs NTP locaux, mise à l'heure du navigateur), services, journal, redémarrage. Tout changement réseau doit être **confirmé** : sinon retour seul à l'ancien réglage au bout de 90 s (minuteur systemd) | — |
+
 Les trois services `pxl-*` sont relancés seuls (`Restart=always`). Si la preview tombe, le serveur continue.
 
 Réglages pour une exploitation dans un car régie :
@@ -57,6 +59,18 @@ Réglages pour une exploitation dans un car régie :
 - **écritures sur la carte SD au minimum** : journal en RAM seulement (64 Mo, perdu au redémarrage), ni rsyslog ni vnstat, journaux de Tailscale en RAM — mesuré 0 Kio écrit en 150 s (02/10/2026) ;
 - **chien de garde matériel** : la box redémarre seule si le noyau se fige.
 
+## L'heure dans un car sans Internet
+
+La box n'a pas d'horloge sauvegardée : sans source de temps, elle redémarre à une date fausse et l'habillage affiche une
+heure fausse (« ntP » clignote sur la façade). Remède sans matériel : le **PC vMix sert l'heure**.
+
+1. Sur le PC vMix, une fois, en administrateur : `installation/vmix/serveur-heure-windows.cmd` (serveur NTP de Windows +
+   port UDP 123 ouvert ; `…-annuler.cmd` pour défaire).
+2. Page d'administration de la box → **Heure** → « Serveurs de temps locaux » : l'adresse IP du PC vMix.
+3. La même section montre si la source répond. En dernier recours : « Mettre la box à l'heure de ce navigateur ».
+
+⚠️ Non vérifié à ce jour : le serveur NTP de Windows face à chrony (aucun PC Windows sous la main le 02/10).
+
 ## Exploiter
 
 ```bash
@@ -64,6 +78,7 @@ pxl-kiosk etat                    # résumé santé
 pxl-kiosk maj-app                 # nouvelle version de l'application (etat-local/ est conservé)
 pxl-kiosk redemarrer preview      # ou serveur, ou tout
 pxl-kiosk journal serveur         # journal en direct
+pxl-kiosk mdp-admin               # mot de passe de la page d'administration (:8791)
 curl http://<NOM_MACHINE>:8790/sante.txt    # depuis le tailnet
 ```
 

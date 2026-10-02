@@ -3,7 +3,8 @@
 #   pxl-kiosk etat                  résumé : services, températures, santé du serveur d'habillage
 #   pxl-kiosk maj-app               recopie / met à jour l'application depuis APP_SOURCE, puis relance le serveur
 #   pxl-kiosk redemarrer [serveur|preview|tout]
-#   pxl-kiosk journal [serveur|preview|sante]   (suivi en direct)
+#   pxl-kiosk journal [serveur|preview|sante|admin]   (suivi en direct)
+#   pxl-kiosk mdp-admin             pose le mot de passe de la page d'administration (:8791)
 . /etc/pxl-kiosk.conf
 case "${1:-etat}" in
   etat) curl -s "http://127.0.0.1:${SANTE_PORT:-8790}/sante.txt" || systemctl --no-pager status pxl-serveur pxl-preview ;;
@@ -24,5 +25,10 @@ case "${1:-etat}" in
       tout) systemctl restart pxl-serveur pxl-preview ;; *) echo "serveur | preview | tout"; exit 1 ;;
     esac ;;
   journal) journalctl -f -u "pxl-${2:-serveur}" ;;
-  *) sed -n '2,6p' "$0"; exit 1 ;;
+  mdp-admin)
+    [ "$(id -u)" = 0 ] || { echo "en root"; exit 1; }
+    read -rsp "nouveau mot de passe d'administration : " m; echo; read -rsp "encore une fois : " m2; echo
+    [ "$m" = "$m2" ] || { echo "les deux saisies diffèrent"; exit 1; }
+    printf '%s' "$m" | /opt/node/bin/node /usr/local/lib/pxl-kiosk/admin.mjs --mdp ;;
+  *) sed -n '2,7p' "$0"; exit 1 ;;
 esac

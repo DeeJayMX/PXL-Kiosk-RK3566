@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Administration de la box</title>
+<style>
+  :root { --fond: #0f1216; --carte: #171b21; --trait: #2a313a; --texte: #e8ecf1; --doux: #8b95a1; --accent: #4aa8ff;
+    --vert: #3ddc97; --rouge: #ff5d6c; --orange: #f5b14c; --rayon: 10px; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--fond); color: var(--texte); font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 12px; padding: 12px 16px;
+    background: rgba(15, 18, 22, .95); border-bottom: 1px solid var(--trait); }
+  header { flex-wrap: wrap; }
+  header h1 { margin: 0; font-size: 18px; font-weight: 600; flex: 1; }
+  header .machine { color: var(--doux); font-size: 14px; }
+  /* minmax(0, 1fr) et min-width: 0 : sans eux, un tableau large élargit la grille au-delà de l'écran d'un téléphone (vu au rendu) */
+  main { max-width: 980px; margin: 0 auto; padding: 16px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  section { min-width: 0; background: var(--carte); border: 1px solid var(--trait); border-radius: var(--rayon); padding: 16px; }
+  h2 { margin: 0 0 12px; font-size: 17px; font-weight: 600; }
+  h3 { margin: 16px 0 8px; font-size: 15px; font-weight: 600; color: var(--doux); }
+  .grille { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr)); gap: 10px; }
+  .case { background: var(--fond); border: 1px solid var(--trait); border-radius: 8px; padding: 10px 12px; min-width: 0; }
+  .case small { display: block; color: var(--doux); font-size: 13px; }
+  .case b { display: block; font-weight: 600; overflow-wrap: anywhere; }
+  .ok { color: var(--vert); } .ko { color: var(--rouge); } .moyen { color: var(--orange); }
+  label { display: block; margin: 10px 0 4px; color: var(--doux); font-size: 14px; }
+  input, select, textarea { width: 100%; padding: 10px 12px; font: inherit; color: var(--texte); background: var(--fond);
+    border: 1px solid var(--trait); border-radius: 8px; }
+  input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .ligne { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+  .ligne > * { flex: 1 1 160px; }
+  button { min-height: 44px; padding: 10px 16px; font: inherit; font-weight: 600; color: var(--texte); background: #24303d;
+    border: 1px solid #34414f; border-radius: 8px; cursor: pointer; }
+  button:hover { background: #2c3a4a; }
+  button.principal { background: var(--accent); border-color: var(--accent); color: #06121f; }
+  button.danger { background: transparent; border-color: var(--rouge); color: var(--rouge); }
+  button:disabled { opacity: .5; cursor: wait; }
+  .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+  table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--trait); vertical-align: middle; }
+  th { color: var(--doux); font-weight: 500; font-size: 13px; }
+  td.n { width: 1%; white-space: nowrap; }
+  .table { overflow-x: auto; }
+  .note { color: var(--doux); font-size: 14px; margin: 8px 0 0; }
+  .bandeau { position: sticky; top: 58px; z-index: 2; background: #3a2b10; border: 1px solid var(--orange); color: #ffe2b0;
+    border-radius: var(--rayon); padding: 14px 16px; display: none; }
+  .bandeau.actif { display: block; }
+  .bandeau .actions { margin-top: 10px; }
+  #message { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); max-width: calc(100% - 32px); z-index: 3;
+    padding: 12px 18px; border-radius: 8px; background: #24303d; border: 1px solid var(--trait); display: none; }
+  #message.erreur { border-color: var(--rouge); color: #ffd0d5; } #message.ok { border-color: var(--vert); }
+  pre { margin: 10px 0 0; max-height: 420px; overflow: auto; padding: 10px; background: #0a0c0f; border: 1px solid var(--trait);
+    border-radius: 8px; font: 12.5px/1.4 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; word-break: break-all; }
+  #connexion { max-width: 380px; margin: 12vh auto; }
+  .cache { display: none !important; }
+  .grandeheure { font-size: 28px; font-weight: 600; font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<div id="connexion" class="cache">
+  <section>
+    <h2>Administration de la box</h2>
+    <form id="f-connexion">
+      <label for="mdp">Mot de passe</label>
+      <input id="mdp" type="password" autocomplete="current-password" autofocus required>
+      <div class="actions"><button class="principal" type="submit">Se connecter</button></div>
+    </form>
+  </section>
+</div>
+
+<div id="appli" class="cache">
+<header>
+  <h1>Administration</h1><span class="machine" id="nom-machine"></span>
+  <button id="b-rafraichir" type="button">Rafraîchir</button>
+  <button id="b-deconnexion" type="button">Quitter</button>
+</header>
+<main>
+  <div class="bandeau" id="bandeau">
+    <b>Changement réseau en attente de confirmation.</b>
+    <span id="bandeau-texte"></span>
+    <div class="actions">
+      <button class="principal" id="b-confirmer" type="button">Confirmer — garder ce réglage</button>
+      <button id="b-annuler" type="button">Annuler maintenant</button>
+    </div>
+  </div>
+
+  <section>
+    <h2>État</h2>
+    <div class="grille" id="etat"></div>
+  </section>
+
+  <section>
+    <h2>Ethernet</h2>
+    <div class="grille" id="eth-etat"></div>
+    <form id="f-ethernet">
+      <label for="eth-mode">Adresse</label>
+      <select id="eth-mode"><option value="dhcp">Automatique (DHCP)</option><option value="fixe">Fixe</option></select>
+      <div id="eth-fixe" class="cache">
+        <div class="ligne">
+          <div><label for="eth-adresse">Adresse IP</label><input id="eth-adresse" inputmode="decimal" placeholder="192.168.1.50"></div>
+          <div><label for="eth-masque">Masque</label><input id="eth-masque" inputmode="decimal" placeholder="24 ou 255.255.255.0"></div>
+        </div>
+        <div class="ligne">
+          <div><label for="eth-passerelle">Passerelle</label><input id="eth-passerelle" inputmode="decimal" placeholder="192.168.1.1"></div>
+          <div><label for="eth-dns">DNS</label><input id="eth-dns" placeholder="192.168.1.1 1.1.1.1"></div>
+        </div>
+      </div>
+      <p class="note">L'adresse de secours <b id="eth-secours"></b> reste toujours joignable quand aucun DHCP ne répond.
+        Après un changement, il faut le <b>confirmer</b> : sans confirmation, la box revient seule à l'ancien réglage.</p>
+      <div class="actions"><button class="principal" type="submit">Appliquer</button></div>
+    </form>
+  </section>
+
+  <section>
+    <h2>Wi-Fi</h2>
+    <div class="table"><table>
+      <thead><tr><th>Réseau</th><th>Signal</th><th>Priorité</th><th></th></tr></thead>
+      <tbody id="wifi-connus"></tbody>
+    </table></div>
+    <p class="note">Le réseau de plus haute priorité visible est choisi. L'Ethernet passe toujours avant le Wi-Fi.</p>
+    <h3>Ajouter un réseau</h3>
+    <form id="f-wifi">
+      <div class="ligne">
+        <div><label for="wifi-ssid">Nom (SSID)</label><input id="wifi-ssid" list="wifi-vus" required maxlength="32"></div>
+        <div><label for="wifi-psk">Mot de passe</label><input id="wifi-psk" type="password" autocomplete="new-password" maxlength="64"></div>
+        <div style="flex: 0 1 110px"><label for="wifi-prio">Priorité</label><input id="wifi-prio" type="number" value="10" min="-999" max="999"></div>
+      </div>
+      <datalist id="wifi-vus"></datalist>
+      <div class="actions"><button class="principal" type="submit">Ajouter</button><button id="b-scan" type="button">Chercher les réseaux</button></div>
+    </form>
+    <div class="table"><table id="t-scan" class="cache"><thead><tr><th>Réseaux visibles</th><th>Signal</th><th>Sécurité</th></tr></thead><tbody id="wifi-scan"></tbody></table></div>
+  </section>
+
+  <section>
+    <h2>Heure</h2>
+    <div class="grille">
+      <div class="case"><small>Heure de la box</small><b class="grandeheure" id="h-box">—</b></div>
+      <div class="case"><small>Heure de ce navigateur</small><b class="grandeheure" id="h-nav">—</b></div>
+      <div class="case"><small>Synchronisation</small><b id="h-synchro">—</b></div>
+    </div>
+    <h3>Sources de temps</h3>
+    <div class="table"><table><thead><tr><th>Serveur</th><th>État</th><th>Strate</th><th>Écart</th></tr></thead><tbody id="h-sources"></tbody></table></div>
+    <h3>Serveurs de temps locaux</h3>
+    <form id="f-ntp">
+      <label for="ntp-serveurs">Adresses (ex. le PC vMix), séparées par des espaces</label>
+      <input id="ntp-serveurs" placeholder="192.168.1.10">
+      <p class="note">Pour un car sans Internet. Sur le PC vMix : lancer une fois <b>serveur-heure-windows.cmd</b> en administrateur.</p>
+      <div class="actions"><button class="principal" type="submit">Enregistrer</button></div>
+    </form>
+    <h3>En dernier recours</h3>
+    <p class="note">Sans aucun serveur de temps joignable : la box prend l'heure de ce navigateur (à une fraction de seconde près).
+      Vérifie d'abord que l'heure de cet appareil est juste.</p>
+    <div class="actions"><button id="b-heure" type="button">Mettre la box à l'heure de ce navigateur</button></div>
+  </section>
+
+  <section>
+    <h2>Machine</h2>
+    <div class="grille" id="m-services"></div>
+    <div class="actions">
+      <button id="b-r-serveur" type="button">Relancer le serveur d'habillage</button>
+      <button id="b-r-preview" type="button">Relancer la preview</button>
+      <button class="danger" id="b-reboot" type="button">Redémarrer la box</button>
+    </div>
+    <h3>Journal</h3>
+    <div class="ligne">
+      <div><select id="j-unite">
+        <option value="pxl-serveur">Serveur d'habillage</option><option value="pxl-preview">Preview</option>
+        <option value="chrony">Heure (chrony)</option><option value="NetworkManager">Réseau</option>
+        <option value="tailscaled">Tailscale</option><option value="pxl-admin">Administration</option><option value="pxl-sante">Santé</option>
+      </select></div>
+      <div style="flex: 0 1 auto"><button id="b-journal" type="button">Afficher</button></div>
+    </div>
+    <pre id="journal" class="cache"></pre>
+    <p class="note">Le journal est gardé en mémoire seulement (aucune écriture sur la carte) : il repart à zéro à chaque démarrage.</p>
+  </section>
+
+  <section>
+    <h2>Mot de passe d'administration</h2>
+    <form id="f-mdp">
+      <div class="ligne">
+        <div><label for="mdp-ancien">Actuel</label><input id="mdp-ancien" type="password" autocomplete="current-password" required></div>
+        <div><label for="mdp-nouveau">Nouveau (8 caractères au moins)</label><input id="mdp-nouveau" type="password" autocomplete="new-password" minlength="8" required></div>
+      </div>
+      <div class="actions"><button type="submit">Changer</button></div>
+    </form>
+  </section>
+</main>
+</div>
+<div id="message"></div>
+
+<script>
+'use strict';
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+let E = null, ecartHorloge = 0, minuteur = null;
+
+function message(texte, genre = 'ok') {
+  const m = $('#message'); m.textContent = texte; m.className = genre; m.style.display = 'block';
+  clearTimeout(m._t); m._t = setTimeout(() => { m.style.display = 'none'; }, genre === 'erreur' ? 8000 : 3500);
+}
+async function appel(chemin, corps) {
+  const r = await fetch(chemin, corps === undefined ? {} : { method: 'POST', headers: { 'content-type': 'application/json', 'x-pxl-admin': '1' }, body: JSON.stringify(corps) });
+  const j = await r.json().catch(() => ({ erreur: `réponse illisible (${r.status})` }));
+  if (r.status === 401 && chemin !== '/api/connexion') { afficherConnexion(); throw new Error('connexion requise'); }
+  if (!r.ok || j.erreur) throw new Error(j.erreur || `erreur ${r.status}`);
+  return j;
+}
+// bouton occupé pendant l'action, message au retour
+async function action(bouton, fn, reussite) {
+  bouton.disabled = true;
+  try { const r = await fn(); message(r && r.avertissement ? r.avertissement : reussite, r && r.avertissement ? 'erreur' : 'ok'); await charger(); }
+  catch (e) { if (e.message !== 'connexion requise') message(e.message, 'erreur'); }
+  finally { bouton.disabled = false; }
+}
+function afficherConnexion() { $('#appli').classList.add('cache'); $('#connexion').classList.remove('cache'); $('#mdp').focus(); }
+
+const case_ = (titre, valeur, classe = '') => `<div class="case"><small>${esc(titre)}</small><b class="${classe}">${valeur}</b></div>`;
+const duree = s => s < 3600 ? `${Math.round(s / 60)} min` : s < 86400 ? `${Math.floor(s / 3600)} h ${Math.round(s % 3600 / 60)} min` : `${Math.floor(s / 86400)} j ${Math.floor(s % 86400 / 3600)} h`;
+
+function rendre() {
+  const { reseau: r, ethernet: e, wifi: w, heure: h, machine: m } = E;
+  $('#nom-machine').textContent = m.nom;
+  // État
+  const ifs = r.adresses.map(i => case_(i.nom, esc(i.adresses.join(' · ') || 'aucune adresse'), i.adresses.length ? '' : 'moyen')).join('');
+  $('#etat').innerHTML = case_('Internet', r.internet ? 'joignable' : 'injoignable', r.internet ? 'ok' : 'ko') + ifs
+    + case_('Passerelle', esc(r.routes.map(x => `${x.via} (${x.dev})`).join(' · ') || 'aucune'))
+    + case_('DNS', esc(r.dns.join(' · ') || '—')) + case_('Tailscale', esc(r.tailscale || 'déconnecté'), r.tailscale ? 'ok' : 'ko')
+    + case_('En marche depuis', duree(m.depuis_s));
+  // Ethernet
+  const i4 = e.ipv4 || {};
+  $('#eth-etat').innerHTML = case_('Câble', e.cable ? 'branché' : 'débranché', e.cable ? 'ok' : 'moyen')
+    + case_('Réglage', i4.method === 'manual' ? 'adresse fixe' : 'automatique (DHCP)')
+    + case_('Profil', esc(e.profil ? e.profil.nom : 'DHCP automatique d\'Ubuntu'));
+  $('#eth-secours').textContent = e.secours || '—';
+  if (!$('#f-ethernet').dataset.touche) {   // ne pas écraser une saisie en cours
+    $('#eth-mode').value = i4.method === 'manual' ? 'fixe' : 'dhcp';
+    const [ad, pre] = (i4.addresses || '').split(',')[0].split('/');
+    $('#eth-adresse').value = i4.method === 'manual' ? ad || '' : ''; $('#eth-masque').value = i4.method === 'manual' ? pre || '' : '';
+    $('#eth-passerelle').value = i4.gateway || ''; $('#eth-dns').value = (i4.dns || '').replace(/,/g, ' ');
+    $('#eth-fixe').classList.toggle('cache', $('#eth-mode').value !== 'fixe');
+  }
+  // Wi-Fi
+  $('#wifi-connus').innerHTML = w.connus.map(c => `<tr>
+    <td>${esc(c.nom)}${c.actif ? ' <span class="ok">· connecté</span>' : ''}</td>
+    <td class="n">${c.signal == null ? '<span class="moyen">hors de portée</span>' : c.signal + ' %'}</td>
+    <td class="n"><input type="number" value="${c.priorite}" min="-999" max="999" style="width:90px" data-prio="${esc(c.uuid)}"></td>
+    <td class="n">${c.actif ? '' : `<button type="button" data-connecter="${esc(c.uuid)}">Connecter</button> `}<button type="button" class="danger" data-supprimer="${esc(c.uuid)}" data-nom="${esc(c.nom)}" data-actif="${c.actif ? 1 : ''}">Supprimer</button></td>
+  </tr>`).join('') || '<tr><td colspan="4" class="note">aucun réseau enregistré</td></tr>';
+  // Heure
+  ecartHorloge = h.maintenant - Date.now();
+  $('#h-synchro').innerHTML = h.synchro ? `<span class="ok">synchronisée</span> <small>${esc(h.ecart || '')}</small>` : '<span class="ko">NON synchronisée</span>';
+  $('#h-sources').innerHTML = h.sources.map(s => `<tr><td>${esc(s.adresse)}${s.local ? ' <small class="note">(local)</small>' : ''}</td>
+    <td class="${s.utilisee ? 'ok' : s.joignable ? '' : 'ko'}">${esc(s.etat)}</td><td class="n">${s.strate || '—'}</td>
+    <td class="n">${s.decalage_ms == null || !s.joignable ? '—' : s.decalage_ms + ' ms'}</td></tr>`).join('') || '<tr><td colspan="4" class="note">aucune source</td></tr>';
+  if (!$('#f-ntp').dataset.touche) $('#ntp-serveurs').value = h.locaux.join(' ');
+  // Machine
+  $('#m-services').innerHTML = Object.entries(m.services).map(([n, s]) => case_(n, esc(s.ActiveState === 'active' ? 'actif' : s.ActiveState || '?')
+    + (+s.NRestarts ? ` · ${s.NRestarts} relance(s)` : ''), s.ActiveState === 'active' ? 'ok' : 'ko')).join('');
+  // Retour en attente
+  bandeau();
+}
+function bandeau() {
+  clearInterval(minuteur);
+  const b = $('#bandeau'), r = E && E.retour;
+  b.classList.toggle('actif', !!r);
+  if (!r) return;
+  const maj = () => {
+    const s = Math.max(0, Math.round((r.expire - Date.now()) / 1000));
+    $('#bandeau-texte').textContent = ` Sans confirmation, retour automatique à l'ancien réglage (${r.quoi === 'wifi' ? 'Wi-Fi' : 'Ethernet'}) dans ${s} s.`;
+    if (s === 0) { clearInterval(minuteur); setTimeout(charger, 4000); }
+  };
+  maj(); minuteur = setInterval(maj, 1000);
+}
+async function charger() {
+  try { E = await appel('/api/etat'); $('#connexion').classList.add('cache'); $('#appli').classList.remove('cache'); rendre(); }
+  catch (e) { if (e.message !== 'connexion requise') message(e.message, 'erreur'); }
+}
+
+// horloges (celle de la box est déduite de l'écart mesuré au dernier chargement)
+setInterval(() => {
+  const f = d => d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  if (E) $('#h-box').textContent = f(new Date(Date.now() + ecartHorloge));
+  $('#h-nav').textContent = f(new Date());
+}, 250);
+
+$('#f-connexion').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  try { await appel('/api/connexion', { mdp: $('#mdp').value }); $('#mdp').value = ''; await charger(); }
+  catch (e) { message(e.message, 'erreur'); }
+});
+$('#b-deconnexion').addEventListener('click', async () => { await appel('/api/deconnexion', {}).catch(() => {}); afficherConnexion(); });
+$('#b-rafraichir').addEventListener('click', ev => action(ev.target, () => appel('/api/etat').then(() => {}), 'à jour'));
+for (const f of ['#f-ethernet', '#f-ntp']) $(f).addEventListener('input', () => { $(f).dataset.touche = '1'; });
+$('#eth-mode').addEventListener('change', () => $('#eth-fixe').classList.toggle('cache', $('#eth-mode').value !== 'fixe'));
+$('#f-ethernet').addEventListener('submit', ev => {
+  ev.preventDefault();
+  const q = { mode: $('#eth-mode').value, adresse: $('#eth-adresse').value, masque: $('#eth-masque').value, passerelle: $('#eth-passerelle').value, dns: $('#eth-dns').value };
+  if (!confirm(q.mode === 'dhcp' ? 'Passer l\'Ethernet en automatique (DHCP) ?' : `Passer l'Ethernet en adresse fixe ${q.adresse} ?`)) return;
+  action(ev.submitter, async () => { const r = await appel('/api/ethernet', q); delete $('#f-ethernet').dataset.touche; return r; },
+    'réglage appliqué — vérifie que tout répond, puis confirme');
+});
+$('#b-confirmer').addEventListener('click', ev => action(ev.target, () => appel('/api/confirmer', {}), 'réglage gardé'));
+$('#b-annuler').addEventListener('click', ev => action(ev.target, () => appel('/api/annuler', {}), 'ancien réglage remis'));
+$('#f-wifi').addEventListener('submit', ev => {
+  ev.preventDefault();
+  action(ev.submitter, async () => { await appel('/api/wifi/ajouter', { ssid: $('#wifi-ssid').value, psk: $('#wifi-psk').value, priorite: $('#wifi-prio').value });
+    $('#wifi-ssid').value = ''; $('#wifi-psk').value = ''; }, 'réseau ajouté');
+});
+$('#b-scan').addEventListener('click', ev => action(ev.target, async () => {
+  const r = await appel('/api/wifi/scan');
+  $('#t-scan').classList.remove('cache');
+  $('#wifi-scan').innerHTML = r.reseaux.map(x => `<tr><td><a href="#" data-ssid="${esc(x.ssid)}" style="color:var(--accent)">${esc(x.ssid)}</a></td><td class="n">${x.signal} %</td><td class="n">${esc(x.securite)}</td></tr>`).join('');
+  $('#wifi-vus').innerHTML = r.reseaux.map(x => `<option value="${esc(x.ssid)}">`).join('');
+}, 'recherche terminée'));
+document.addEventListener('click', ev => {
+  const t = ev.target;
+  if (t.dataset.ssid) { ev.preventDefault(); $('#wifi-ssid').value = t.dataset.ssid; $('#wifi-psk').focus(); }
+  if (t.dataset.connecter && confirm('Se connecter à ce réseau maintenant ? Si la box disparaît, elle reviendra seule à l\'ancien réseau.'))
+    action(t, () => appel('/api/wifi/connecter', { uuid: t.dataset.connecter }), 'connecté — vérifie que tout répond, puis confirme');
+  if (t.dataset.supprimer && confirm(`Supprimer le réseau « ${t.dataset.nom} » ?${t.dataset.actif ? '\n⚠️ C\'est le réseau actif : la box va s\'en déconnecter.' : ''}`))
+    action(t, () => appel('/api/wifi/supprimer', { uuid: t.dataset.supprimer, forcer: !!t.dataset.actif }), 'réseau supprimé');
+});
+document.addEventListener('change', ev => {
+  const t = ev.target;
+  if (t.dataset.prio) action(t, () => appel('/api/wifi/priorite', { uuid: t.dataset.prio, priorite: t.value }), 'priorité changée');
+});
+$('#f-ntp').addEventListener('submit', ev => {
+  ev.preventDefault();
+  action(ev.submitter, async () => { await appel('/api/ntp', { serveurs: $('#ntp-serveurs').value }); delete $('#f-ntp').dataset.touche; }, 'serveurs enregistrés — la synchronisation prend quelques secondes');
+});
+$('#b-heure').addEventListener('click', ev => {
+  if (E && E.heure.synchro && !confirm('La box est déjà synchronisée sur un serveur de temps. La mettre quand même à l\'heure de ce navigateur ?')) return;
+  action(ev.target, () => appel('/api/heure', { ms: Date.now() }), 'box mise à l\'heure de ce navigateur');
+});
+$('#b-r-serveur').addEventListener('click', ev => confirm('Relancer le serveur d\'habillage ? Ce qui est à l\'antenne revient prêt en preview.')
+  && action(ev.target, () => appel('/api/service', { nom: 'pxl-serveur' }), 'serveur relancé'));
+$('#b-r-preview').addEventListener('click', ev => action(ev.target, () => appel('/api/service', { nom: 'pxl-preview' }), 'preview relancée'));
+$('#b-reboot').addEventListener('click', ev => confirm('Redémarrer la box ? Environ une minute sans habillage.')
+  && action(ev.target, () => appel('/api/redemarrer', {}), 'redémarrage en cours — recharge la page dans une minute'));
+$('#b-journal').addEventListener('click', ev => action(ev.target, async () => {
+  const r = await appel('/api/journal?u=' + encodeURIComponent($('#j-unite').value));
+  const p = $('#journal'); p.classList.remove('cache'); p.textContent = r.texte; p.scrollTop = p.scrollHeight;
+}, 'journal chargé'));
+$('#f-mdp').addEventListener('submit', ev => {
+  ev.preventDefault();
+  action(ev.submitter, async () => { await appel('/api/mdp', { ancien: $('#mdp-ancien').value, nouveau: $('#mdp-nouveau').value });
+    $('#mdp-ancien').value = ''; $('#mdp-nouveau').value = ''; }, 'mot de passe changé');
+});
+setInterval(() => { if (E && !document.hidden && !document.querySelector('button:disabled')) charger(); }, 15000);
+charger();
+</script>
+</body>
+</html>

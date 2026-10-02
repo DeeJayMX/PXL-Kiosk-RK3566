@@ -10,7 +10,7 @@ import { hostname, uptime, loadavg, totalmem, freemem } from 'node:os';
 const conf = Object.fromEntries(readFileSync('/etc/pxl-kiosk.conf', 'utf8').split('\n')
   .map(l => l.match(/^\s*([A-Z_]+)=("?)(.*)\2\s*$/)).filter(Boolean).map(m => [m[1], m[3]]));
 const PORT = +conf.SANTE_PORT || 8790;
-const SERVICES = ['pxl-serveur', 'pxl-preview', 'pxl-sante', 'pxl-facade', 'pxl-telecommande', 'pxl-relais', 'seatd', 'chrony', 'tailscaled'];
+const SERVICES = ['pxl-serveur', 'pxl-preview', 'pxl-sante', 'pxl-admin', 'pxl-facade', 'pxl-telecommande', 'pxl-relais', 'seatd', 'chrony', 'tailscaled'];
 const lire = f => { try { return readFileSync(f, 'utf8').trim(); } catch { return null; } };
 
 function temperatures() {
@@ -62,5 +62,8 @@ createServer(async (req, res) => {
     const e = await etat(), txt = req.url.endsWith('.txt');
     res.writeHead(200, { 'content-type': txt ? 'text/plain; charset=utf-8' : 'application/json' });
     res.end(txt ? resume(e) : JSON.stringify(e, null, 1));
+  } else if (req.url === '/admin' || req.url.startsWith('/admin/')) {   // l'administration vit sur son propre service
+    const hote = (req.headers.host || '127.0.0.1').replace(/:\d+$/, '');
+    res.writeHead(302, { location: `http://${hote}:${+conf.ADMIN_PORT || 8791}/` }); res.end();
   } else { res.writeHead(404); res.end(); }
 }).listen(PORT, () => console.log(`santé sur :${PORT}/sante`));

@@ -31,6 +31,10 @@ SORTIE_MODE=1920x1080@25
 # Petit serveur JSON (température, charge, services, santé du serveur d'habillage)
 SANTE_PORT=8790
 
+# --- Administration (réseau, heure, machine) -----------------------------------------------------
+# Page http://<box>:8791/ (aussi :8790/admin). Mot de passe dédié : ADMIN_MDP=… à l'installation, ou « pxl-kiosk mdp-admin ».
+ADMIN_PORT=8791
+
 # --- Tailscale (facultatif) ---------------------------------------------------------------------
 # Tags demandés à l'enregistrement (la clé doit les autoriser). Vide = pas de tag.
 TS_TAGS=tag:pxl-dev
