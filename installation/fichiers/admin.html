@@ -43,7 +43,7 @@
   td.n { width: 1%; white-space: nowrap; }
   .table { overflow-x: auto; }
   .note { color: var(--doux); font-size: 14px; margin: 8px 0 0; }
-  .bandeau { position: sticky; top: 58px; z-index: 2; background: #3a2b10; border: 1px solid var(--orange); color: #ffe2b0;
+  .bandeau { position: sticky; top: 116px; z-index: 2; background: #3a2b10; border: 1px solid var(--orange); color: #ffe2b0;
     border-radius: var(--rayon); padding: 14px 16px; display: none; }
   .bandeau.actif { display: block; }
   .bandeau .actions { margin-top: 10px; }
@@ -54,6 +54,14 @@
     border-radius: 8px; font: 12.5px/1.4 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; word-break: break-all; }
   #connexion { max-width: 380px; margin: 12vh auto; }
   .cache { display: none !important; }
+  /* onglets : une famille de réglages à la fois (souvenir gardé sur ce poste, et dans l'adresse : …/#reseau) */
+  #onglets { position: sticky; top: 58px; z-index: 2; display: flex; gap: 6px; padding: 8px 16px; max-width: 980px; margin: 0 auto;
+    background: rgba(15, 18, 22, .95); overflow-x: auto; }
+  #onglets button { min-height: 40px; flex: 1 1 0; white-space: nowrap; background: transparent; border-color: var(--trait); color: var(--doux); }
+  #onglets button.actif { background: var(--accent); border-color: var(--accent); color: #06121f; }
+  main[data-onglet] section[data-onglet] { display: none; }
+  main[data-onglet="etat"] section[data-onglet="etat"], main[data-onglet="habillage"] section[data-onglet="habillage"],
+  main[data-onglet="reseau"] section[data-onglet="reseau"], main[data-onglet="systeme"] section[data-onglet="systeme"] { display: block; }
   .grandeheure { font-size: 28px; font-weight: 600; font-variant-numeric: tabular-nums; }
   .bandeau-mode { display: none; background: #4a2a06; border: 1px solid #f5a623; color: #ffd28a; border-radius: 8px; padding: 10px 14px; margin-bottom: 16px; font-weight: 600; }
   .bandeau-mode.visible { display: block; }
@@ -83,6 +91,9 @@
   <button id="b-rafraichir" type="button">Rafraîchir</button>
   <button id="b-deconnexion" type="button">Quitter</button>
 </header>
+<nav id="onglets">
+  <button type="button" data-o="etat">État</button><button type="button" data-o="habillage">Habillage &amp; écran</button><button type="button" data-o="reseau">Réseau</button><button type="button" data-o="systeme">Système</button>
+</nav>
 <main>
   <div class="bandeau" id="bandeau">
     <b>Changement réseau en attente de confirmation.</b>
@@ -95,12 +106,12 @@
 
   <div class="bandeau-mode" id="bandeau-mode"></div>
 
-  <section>
+  <section data-onglet="etat">
     <h2>État</h2>
     <div class="grille" id="etat"></div>
   </section>
 
-  <section>
+  <section data-onglet="habillage">
     <h2>Mode du serveur d'habillage</h2>
     <form id="f-mode">
       <div class="ligne">
@@ -121,7 +132,7 @@
       de la box, le mode revient <b>toujours</b> sur Course.</p>
   </section>
 
-  <section>
+  <section data-onglet="habillage">
     <h2>Sortie HDMI</h2>
     <form id="f-ecran">
       <div class="ligne">
@@ -134,7 +145,7 @@
       Multiview) se choisit dans la console de l'habillage, ⚙ Réglages.</p>
   </section>
 
-  <section>
+  <section data-onglet="habillage">
     <h2>Mises à jour</h2>
     <div id="maj"><p class="note">chargement…</p></div>
     <p class="note">Source : GitHub. « Vérifier » ne change rien ; « Appliquer » installe la dernière version poussée sur
@@ -142,19 +153,19 @@
       n'est pas relancé (les pages se rechargent d'elles-mêmes).</p>
   </section>
 
-  <section>
+  <section data-onglet="etat">
     <h2>Matériel</h2>
     <div class="grille" id="mat-temp"></div>
   </section>
 
-  <section>
+  <section data-onglet="etat">
     <h2>Surveillance</h2>
     <div class="grille" id="surv"></div>
     <p class="note">La carte SD ne devrait presque plus rien recevoir (journal en mémoire) : un rythme qui monte en continu
       signale un programme qui écrit. Images par seconde : mesurées dans la page affichée, sur une seconde.</p>
   </section>
 
-  <section>
+  <section data-onglet="reseau">
     <h2>Ethernet</h2>
     <div class="grille" id="eth-etat"></div>
     <form id="f-ethernet">
@@ -176,7 +187,7 @@
     </form>
   </section>
 
-  <section>
+  <section data-onglet="reseau">
     <h2>Wi-Fi</h2>
     <div class="table"><table>
       <thead><tr><th>Réseau</th><th>Signal</th><th>Priorité</th><th></th></tr></thead>
@@ -196,7 +207,7 @@
     <div class="table"><table id="t-scan" class="cache"><thead><tr><th>Réseaux visibles</th><th>Signal</th><th>Sécurité</th></tr></thead><tbody id="wifi-scan"></tbody></table></div>
   </section>
 
-  <section>
+  <section data-onglet="systeme">
     <h2>Heure</h2>
     <div class="grille">
       <div class="case"><small>Heure de la box</small><b class="grandeheure" id="h-box">—</b></div>
@@ -218,7 +229,7 @@
     <div class="actions"><button id="b-heure" type="button">Mettre la box à l'heure de ce navigateur</button></div>
   </section>
 
-  <section>
+  <section data-onglet="systeme">
     <h2>Machine</h2>
     <div class="grille" id="m-services"></div>
     <div class="actions">
@@ -242,7 +253,7 @@
     <p class="note">Le journal est gardé en mémoire seulement (aucune écriture sur la carte) : il repart à zéro à chaque démarrage.</p>
   </section>
 
-  <section>
+  <section data-onglet="systeme">
     <h2>Mot de passe d'administration</h2>
     <form id="f-mdp">
       <div class="ligne">
@@ -522,6 +533,22 @@ $('#f-mdp').addEventListener('submit', ev => {
 });
 setInterval(() => { if (E && !document.hidden && !document.querySelector('button:disabled')) charger(); }, 15000);
 charger().then(() => { if (E) chargerMaj(); });
+
+// ---- onglets
+(() => {
+  const ONGLETS = ['etat', 'habillage', 'reseau', 'systeme'];
+  const choisir = o => {
+    if (!ONGLETS.includes(o)) o = 'etat';
+    document.querySelector('main').dataset.onglet = o;
+    for (const b of document.querySelectorAll('#onglets button')) b.classList.toggle('actif', b.dataset.o === o);
+    try { localStorage.setItem('pxl-admin-onglet', o); } catch {}
+    if (location.hash.slice(1) !== o) history.replaceState(null, '', '#' + o);
+  };
+  document.querySelector('#onglets').addEventListener('click', e => { const b = e.target.closest('button[data-o]'); if (b) { choisir(b.dataset.o); scrollTo(0, 0); } });
+  addEventListener('hashchange', () => choisir(location.hash.slice(1)));
+  let depart = location.hash.slice(1); try { depart = depart || localStorage.getItem('pxl-admin-onglet'); } catch {}
+  choisir(depart);
+})();
 </script>
 </body>
 </html>
