@@ -236,6 +236,10 @@ mkdir -p /etc/systemd/journald.conf.d
 printf '[Journal]\nStorage=volatile\nRuntimeMaxUse=64M\nForwardToSyslog=no\n' > /etc/systemd/journald.conf.d/pxl.conf
 rm -rf /var/log/journal/* 2>/dev/null || true
 couper rsyslog vnstat
+# fake-hwclock : l'image ophub sauvegarde l'heure toutes les heures sur la carte mais a MASQUÉ sa restauration au
+# démarrage (mesuré le 02/10) — des écritures qui ne servent à rien. L'heure vient de chrony (Internet ou NTP local).
+couper fake-hwclock-save.timer
+systemctl mask -q fake-hwclock-save.timer fake-hwclock-save.service 2>/dev/null || true
 mkdir -p /etc/systemd/system/tailscaled.service.d   # tampon des journaux de Tailscale en RAM (/run/tailscale)
 printf '[Service]\nEnvironment=TS_LOGS_DIR=/run/tailscale\n' > /etc/systemd/system/tailscaled.service.d/pxl-logs.conf
 rm -f /var/lib/tailscale/tailscaled.log*.txt /var/lib/tailscale/tailscaled.log.conf
