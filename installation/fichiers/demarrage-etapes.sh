@@ -35,9 +35,9 @@ while plymouth --ping 2>/dev/null && [ "$(secondes)" -lt 300 ]; do
   # 3 · heure : la box n'a pas d'horloge sauvegardée
   if chronyc -n tracking 2>/dev/null | grep -q '^Leap status *: Normal'; then
     src=$(timeout 2 chronyc tracking 2>/dev/null | sed -n 's/^Reference ID *: [0-9A-F]* (\(.*\))$/\1/p')
-    envoyer 3 2 "synchronisée${src:+ sur $src} — $(date +%H:%M:%S)   (façade : SYnC)"
-  elif [ "$t" -gt 90 ]; then envoyer 3 4 "aucun serveur de temps — heure NON fiable   (façade : ntP)"
-  else envoyer 3 1 "synchronisation…   (façade : ntP)"; fi
+    envoyer 3 2 "synchronisée${src:+ sur $src} — $(date +%H:%M:%S)"
+  elif [ "$t" -gt 90 ]; then envoyer 3 4 "aucun serveur de temps — heure NON fiable"
+  else envoyer 3 1 "synchronisation…"; fi
 
   # 4 · PXLnet (Tailscale)
   ts=$(tailscale ip -4 2>/dev/null | head -1)
