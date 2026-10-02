@@ -88,8 +88,9 @@ export async function verifier(c) {
   const journal = depuis ? (await git(c, ['log', '--format=%h %s', `${depuis}..${cible}`])).out.trim()
     : (await git(c, ['log', '--format=%h %s', '-8', cible])).out.trim();
   const fichiers = depuis ? (await git(c, ['diff', '--name-only', depuis, cible])).out.trim().split('\n').filter(Boolean) : null;
-  // app : ne toucher que pages/ (et la doc) n'oblige pas à relancer le serveur — les pages se rechargent seules
-  const relance = c === 'app' ? (fichiers == null || fichiers.some(f => !f.startsWith('pages/') && !/\.md$/.test(f) && !f.startsWith('docs/'))) : true;
+  // app : ne toucher que pages/ (et la doc, et VERSION — relue par le serveur) n'oblige pas à relancer le serveur — les
+  // pages se rechargent seules
+  const relance = c === 'app' ? (fichiers == null || fichiers.some(f => !f.startsWith('pages/') && !/\.md$/.test(f) && !f.startsWith('docs/') && f !== 'VERSION')) : true;
   const v = { commit: tete, version: await versionDe(c, cible), a_jour: depuis === tete, journal: journal ? journal.split('\n').slice(0, 30) : [],
     fichiers: fichiers ? fichiers.length : null, relance, le: new Date().toISOString() };
   noter({ ...note(), [c]: { ...(note()[c] || {}), verifie: v } });
