@@ -31,6 +31,15 @@ ADMIN_PORT=${ADMIN_PORT:-8791}; SANTE_PORT=${SANTE_PORT:-8790}
 PPA=liujianfeng1994/rockchip-multimedia
 LIB=/usr/local/lib/pxl-kiosk
 EN_LIGNE=1; [ -d /run/systemd/system ] || EN_LIGNE=0   # 0 = dans une image en fabrication
+# Avancement lu par le serveur d'habillage, qui l'affiche en popup sur l'écran de la box (preview, multiview) : /run, rien
+# sur la carte SD. Un arrêt en route (set -e, meurs) le termine en erreur, sinon la popup resterait à l'écran.
+PROGRES=/run/pxl-maj.json
+progres() { [ $EN_LIGNE = 1 ] || return 0; local fin=null ok=null; [ "${3:-}" ] && { fin=$(date +%s%3N); ok=$3; }
+  printf '{"cible":"box","pct":%s,"texte":"%s","maj":%s,"fin":%s,"ok":%s}\n' "$1" "$2" "$(date +%s%3N)" "$fin" "$ok" > "$PROGRES.part" \
+    && chmod 644 "$PROGRES.part" && mv -f "$PROGRES.part" "$PROGRES"; }
+PROGRES_FINI=0
+trap '[ $PROGRES_FINI = 1 ] || progres 100 "mise à jour interrompue" false' EXIT
+progres 3 "préparation"
 
 verifier() {
   local ok=0
@@ -87,7 +96,7 @@ echo "deb [signed-by=/etc/apt/keyrings/rockchip-multimedia.asc] https://ppa.laun
 # Le PPA gagne sur Ubuntu pour ses paquets (libv4l patchée, MPP, chromium) ; il n'ajoute rien d'autre.
 printf 'Package: *\nPin: release o=LP-PPA-liujianfeng1994-rockchip-multimedia\nPin-Priority: 600\n' > /etc/apt/preferences.d/rockchip-multimedia
 apt-get update -qq
-dire "paquets (Chromium rkmpp, MPP, libv4l, Weston, seatd)…"
+dire "paquets (Chromium rkmpp, MPP, libv4l, Weston, seatd)…"; progres 10 "paquets système"
 apt-get install -y -qq --no-install-recommends \
   chromium chromium-sandbox libv4l-rkmpp libv4l-0t64 v4l-utils librockchip-mpp1 rockchip-multimedia-config \
   weston seatd libgl1-mesa-dri libegl-mesa0 libgbm1 fonts-dejavu-core fonts-liberation chrony bluez \
@@ -99,7 +108,7 @@ NODE_IDX=https://nodejs.org/dist/latest-v22.x
 NODE_TAR=$(curl -fsS $NODE_IDX/SHASUMS256.txt | awk '/linux-arm64\.tar\.xz$/{print $2}')
 NODE_VER=${NODE_TAR%-linux-arm64.tar.xz}
 if [ "$(/opt/node/bin/node -v 2>/dev/null)" != "${NODE_VER#node-}" ]; then
-  dire "Node ${NODE_VER#node-}…"
+  dire "Node ${NODE_VER#node-}…"; progres 30 "Node"
   T=$(mktemp -d); curl -fsS -o "$T/$NODE_TAR" "$NODE_IDX/$NODE_TAR"
   (cd "$T" && curl -fsS $NODE_IDX/SHASUMS256.txt | grep " $NODE_TAR\$" | sha256sum -c --quiet) || meurs "empreinte Node fausse"
   tar xJf "$T/$NODE_TAR" -C /opt && ln -sfn "/opt/$NODE_VER-linux-arm64" /opt/node && rm -rf "$T"
@@ -107,7 +116,7 @@ fi
 
 # ---- 3. Tailscale officiel ---------------------------------------------------------------------
 if ! command -v tailscale >/dev/null; then
-  dire "Tailscale…"
+  dire "Tailscale…"; progres 35 "PXLnet"
   curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg > /usr/share/keyrings/tailscale-archive-keyring.gpg
   curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/noble.tailscale-keyring.list > /etc/apt/sources.list.d/tailscale.list
   apt-get update -qq && apt-get install -y -qq tailscale >/dev/null
@@ -376,7 +385,7 @@ fi
 
 # ---- 7. application, puis démarrage -----------------------------------------------------------
 [ $EN_LIGNE = 1 ] && { systemctl daemon-reload; systemctl restart systemd-journald; }
-dire "application depuis $APP_SOURCE…"
+dire "application depuis $APP_SOURCE…"; progres 65 "application d'habillage"
 /usr/local/bin/pxl-kiosk maj-app >/dev/null || meurs "copie de l'application impossible"
 if [ $EN_LIGNE = 0 ]; then
   systemctl enable -q seatd pxl-serveur pxl-preview pxl-sante pxl-admin pxl-premier-demarrage
@@ -385,9 +394,12 @@ fi
 systemctl enable -q pxl-premier-demarrage
 udevadm trigger --subsystem-match=misc --action=change 2>/dev/null || true   # pose /dev/video-dec0 tout de suite
 systemctl enable -q seatd pxl-serveur pxl-preview pxl-sante pxl-admin
+progres 75 "redémarrage des services"
 systemctl restart seatd pxl-serveur pxl-sante pxl-admin
 sleep 3
 systemctl restart pxl-preview
-dire "attente du démarrage (30 s)…"; sleep 30
-verifier && dire "✅ box prête — santé : http://$NOM_PXLNET:$SANTE_PORT/sante.txt (par le tailnet)" \
-         || dire "🔴 vérification incomplète — journalctl -u pxl-serveur -u pxl-preview"
+progres 80 "démarrage de l'écran"
+dire "attente du démarrage (30 s)…"; for i in $(seq 30); do sleep 1; progres $((80 + i * 15 / 30)) "démarrage de l'écran"; done
+PROGRES_FINI=1
+if verifier; then dire "✅ box prête — santé : http://$NOM_PXLNET:$SANTE_PORT/sante.txt (par le tailnet)"; progres 100 "box à jour" true
+else dire "🔴 vérification incomplète — journalctl -u pxl-serveur -u pxl-preview"; progres 100 "vérification incomplète" false; fi

@@ -118,17 +118,30 @@ async function poser(c, commit) {
 // la carte SD de la box est montée en commit=600 : sans sync, une coupure de courant dans les 10 min qui suivent efface
 // la mise à jour (vu le 02/10 : v1.2.6 appliquée, alimentation coupée, la box est revenue en v1.2.5)
 const graver = () => run('sync', []);
+// avancement affiché en popup sur l'écran de la box (le serveur d'habillage lit ce fichier) — /run : rien sur la carte SD.
+// Pour « box », installer.sh prend le relais et écrit lui-même la suite.
+const PROGRES = '/run/pxl-maj.json';
+const progres = (cible, pct, texte, ok = null) => { try {
+  writeFileSync(PROGRES + '.part', JSON.stringify({ cible, pct, texte, maj: Date.now(), fin: ok == null ? null : Date.now(), ok }), { mode: 0o644 });
+  renameSync(PROGRES + '.part', PROGRES); } catch {} };
 export async function appliquer(c, { commit = null, relancer = null } = {}) {
   exiger(CIBLES[c], 'cible inconnue');
   const n = note(), v = n[c]?.verifie;
   const vise = commit || v?.commit; exiger(vise, 'vérifier d\'abord ce qui est disponible');
   const avant = n[c]?.commit || null;
-  await poser(c, vise);
+  progres(c, 5, c === 'app' ? 'récupération' : 'préparation');
+  try { await poser(c, vise); } catch (e) { progres(c, 100, 'échec : ' + e.message.slice(0, 80), false); throw e; }
+  progres(c, c === 'app' ? 60 : 3, c === 'app' ? 'enregistrement' : 'préparation');
   await graver();
   noter({ ...note(), [c]: { ...(note()[c] || {}), commit: vise, precedent: avant && avant !== vise ? avant : n[c]?.precedent || null, le: new Date().toISOString() } });
   if (c === 'app') {
     await graver();
-    if (relancer ?? v?.relance ?? true) { const r = await run('systemctl', ['restart', 'pxl-serveur']); exiger(r.ok, r.err); return { relance: true }; }
+    if (relancer ?? v?.relance ?? true) {
+      progres(c, 85, 'redémarrage du serveur');
+      const r = await run('systemctl', ['restart', 'pxl-serveur']);
+      progres(c, 100, r.ok ? 'habillage à jour' : 'redémarrage en échec', r.ok); exiger(r.ok, r.err); return { relance: true };
+    }
+    progres(c, 100, 'habillage à jour', true);
     return { relance: false };
   }
   // box : on rejoue installer.sh depuis le clone, dans une unité à part (elle relance aussi pxl-admin : la page perd
