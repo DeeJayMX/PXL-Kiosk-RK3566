@@ -182,7 +182,7 @@ async function regleMode(q) {
   else {
     exiger(MODES[q.mode], 'mode inconnu'); exiger(existsSync(join(APP_DIR, MODES[q.mode])), `${MODES[q.mode]} absent de l'application`);
     const info = { mode: q.mode, depuis: new Date().toISOString() };
-    const lignes = ['[Service]', 'ExecStart=', `ExecStart=${process.execPath} serveur.js ${MODES[q.mode]}`];
+    const lignes = ['[Service]', 'ExecStart=', `ExecStart=${existsSync('/opt/node/bin/node') ? '/opt/node/bin/node' : process.execPath} serveur.js ${MODES[q.mode]}`];
     if (q.mode === 'repetition') {
       // heure saisie « 2025-10-11T19:50 » : heure LOCALE de la box (Europe/Paris), celle de la course
       exiger(/^\d{4}-\d\d-\d\dT\d\d:\d\d$/.test(q.rejouer || ''), 'heure de départ invalide');

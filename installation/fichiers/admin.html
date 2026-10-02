@@ -272,7 +272,7 @@ function rendre() {
   const md = E.mode || { mode: 'course' }, noms = { course: 'Course', demo: 'Démo', repetition: 'Répétition' };
   const bm = $('#bandeau-mode');
   bm.classList.toggle('visible', md.mode !== 'course');
-  bm.textContent = md.mode === 'course' ? '' : `⚠️ Mode ${noms[md.mode]}${md.mode === 'repetition' ? ` — Chaumont 2025 depuis ${md.rejouer.replace('T', ' à ')}, ×${md.vitesse}` : ''} : ce n'est PAS la course en direct. Repasser en Course avant l'antenne (ou redémarrer la box).`;
+  bm.textContent = md.mode === 'course' ? '' : `⚠️ Mode ${noms[md.mode]}${md.mode === 'repetition' ? ` — Chaumont 2025 depuis le ${md.rejouer.slice(8, 10)}/${md.rejouer.slice(5, 7)}/${md.rejouer.slice(0, 4)} à ${md.rejouer.slice(11)}, ×${md.vitesse}` : ''} : ce n'est PAS la course en direct. Repasser en Course avant l'antenne (ou redémarrer la box).`;
   if (!$('#f-mode').dataset.touche) {
     $('#mode-vitesse').innerHTML = (md.vitesses || [1]).map(x => `<option value="${x}">×${x}</option>`).join('');
     $('#mode-choix').value = md.mode;
