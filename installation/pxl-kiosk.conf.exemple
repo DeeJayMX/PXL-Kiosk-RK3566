@@ -3,8 +3,9 @@
 # Syntaxe shell (lu par installer.sh). Aucun secret ici : TS_AUTHKEY se passe en variable
 # d'environnement au moment de l'installation, il n'est jamais écrit sur le disque.
 
-# Nom de la machine (hostname et nom sur le tailnet)
-NOM_MACHINE=PXLnode-UrbanTrail2026
+# Nom de la machine (hostname) et nom sur le tailnet (PXLnet) — le second vaut le premier s'il est vide
+NOM_MACHINE=PXLnode
+NOM_PXLNET=PXLnode-ChaumontUrbanTrail2026
 # Fuseau horaire (le serveur d'habillage affiche l'heure locale)
 FUSEAU=Europe/Paris
 

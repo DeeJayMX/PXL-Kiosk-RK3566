@@ -25,6 +25,7 @@ meurs() { echo "🔴 $*" >&2; exit 1; }
 # encore sur /preview y passe — même page par défaut, mais pilotable depuis la console.
 sed -i -E 's#^(PREVIEW_URL="?http://127\.0\.0\.1:[0-9]+)/preview("?)$#\1/ecran\2#' /etc/pxl-kiosk.conf
 . /etc/pxl-kiosk.conf
+NOM_PXLNET=${NOM_PXLNET:-$NOM_MACHINE}   # nom sur le tailnet (PXLnet) : peut différer du hostname
 ADMIN_PORT=${ADMIN_PORT:-8791}; SANTE_PORT=${SANTE_PORT:-8790}
 . /etc/os-release
 PPA=liujianfeng1994/rockchip-multimedia
@@ -121,9 +122,10 @@ if [ $EN_LIGNE = 0 ]; then
   [ -n "${TS_AUTHKEY:-}" ] && { ( umask 077; printf '%s' "$TS_AUTHKEY" > /etc/pxl-kiosk/ts-authkey ); dire "clé Tailscale posée pour le premier démarrage"; }
 elif [ -n "${TS_AUTHKEY:-}" ]; then
   systemctl start tailscaled
-  tailscale up --auth-key="$TS_AUTHKEY" --hostname="$NOM_MACHINE" --ssh ${TS_TAGS:+--advertise-tags=$TS_TAGS}
+  tailscale up --auth-key="$TS_AUTHKEY" --hostname="$NOM_PXLNET" --ssh ${TS_TAGS:+--advertise-tags=$TS_TAGS}
 else
-  tailscale status >/dev/null 2>&1 || dire "⚠️ Tailscale non connecté : relancer avec TS_AUTHKEY=… (ou « tailscale up --ssh » à la main)"
+  if tailscale status >/dev/null 2>&1; then tailscale set --hostname="$NOM_PXLNET" || dire "⚠️ nom PXLnet non posé"
+  else dire "⚠️ Tailscale non connecté : relancer avec TS_AUTHKEY=… (ou « tailscale up --ssh » à la main)"; fi
 fi
 
 # ---- 4. utilisateur, application, fichiers -------------------------------------------------------
@@ -387,5 +389,5 @@ systemctl restart seatd pxl-serveur pxl-sante pxl-admin
 sleep 3
 systemctl restart pxl-preview
 dire "attente du démarrage (30 s)…"; sleep 30
-verifier && dire "✅ box prête — santé : http://$NOM_MACHINE:$SANTE_PORT/sante.txt (par le tailnet)" \
+verifier && dire "✅ box prête — santé : http://$NOM_PXLNET:$SANTE_PORT/sante.txt (par le tailnet)" \
          || dire "🔴 vérification incomplète — journalctl -u pxl-serveur -u pxl-preview"
