@@ -16,7 +16,7 @@ import { createServer } from 'node:http';
 import { execFile } from 'node:child_process';
 import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync, renameSync, chmodSync, readdirSync } from 'node:fs';
 import { randomBytes, randomUUID, scryptSync, timingSafeEqual, createHmac, createHash } from 'node:crypto';
-import { hostname, uptime } from 'node:os';
+import { hostname, uptime, release } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -150,6 +150,55 @@ async function reseau() {
   const ts = await run('tailscale', ['ip', '-4'], { timeout: 4000 });
   return { adresses, routes, dns, internet, tailscale: ts.ok ? ts.out.trim() : null };
 }
+// ---------------------------------------------------------------- versions : chaque morceau dit ce qu'il est
+// recette (ce dépôt, installation/VERSION, recopiée par installer.sh dans /etc/pxl-kiosk/version), application
+// (VERSION à sa racine), image, et les briques du système. Chromium est lu une fois : la commande coûte ~1 s.
+let chromiumV = null;
+async function versions() {
+  if (chromiumV == null) { const r = await run('chromium', ['--version'], { timeout: 8000 }); chromiumV = (r.out.match(/[\d.]{5,}/) || [''])[0]; }
+  const recette = Object.fromEntries((lire('/etc/pxl-kiosk/version') || '').split('\n').map(l => l.split(/=(.*)/s).slice(0, 2)).filter(x => x[1]));
+  return { recette: recette.recette || null, installee: recette.installee || null, appli: lire(join(APP_DIR, 'VERSION')),
+    image: lire('/etc/pxl-kiosk/image'), noyau: release(), node: process.version.slice(1), chromium: chromiumV || null };
+}
+
+// ---------------------------------------------------------------- mode du serveur d'habillage
+// Course (config.json) · Démo (config.demo.json, un trail terminé) · Répétition (config.chaumont2025.json, l'édition
+// 2025 rejouée depuis une heure choisie : REJOUER/VITESSE, voir serveur.js). Chaque config a son propre fichier
+// d'état : une démo ne touche pas aux réglages de la course.
+// 🔴 Posé en drop-in d'EXÉCUTION (/run) : il disparaît au redémarrage, la box repart TOUJOURS en mode Course — une
+// répétition oubliée ne peut pas se retrouver à l'antenne le jour J. Et rien n'est écrit sur la carte SD.
+const APP_DIR = conf.APP_DIR || '/opt/pxl-app';
+const MODE_DIR = '/run/systemd/system/pxl-serveur.service.d', MODE_F = `${MODE_DIR}/pxl-mode.conf`;
+const MODES = { demo: 'config.demo.json', repetition: 'config.chaumont2025.json' };
+const VITESSES = [1, 2, 5, 10, 30, 60];
+function mode() {
+  const dispo = Object.fromEntries(Object.entries(MODES).map(([m, f]) => [m, existsSync(join(APP_DIR, f))]));
+  let m = { mode: 'course' };
+  try { m = JSON.parse((readFileSync(MODE_F, 'utf8').match(/^# pxl-mode (.*)$/m) || [])[1]); } catch {}
+  return { ...m, disponibles: dispo, vitesses: VITESSES };
+}
+async function regleMode(q) {
+  if (q.mode === 'course') { try { unlinkSync(MODE_F); } catch {} }
+  else {
+    exiger(MODES[q.mode], 'mode inconnu'); exiger(existsSync(join(APP_DIR, MODES[q.mode])), `${MODES[q.mode]} absent de l'application`);
+    const info = { mode: q.mode, depuis: new Date().toISOString() };
+    const lignes = ['[Service]', 'ExecStart=', `ExecStart=${process.execPath} serveur.js ${MODES[q.mode]}`];
+    if (q.mode === 'repetition') {
+      // heure saisie « 2025-10-11T19:50 » : heure LOCALE de la box (Europe/Paris), celle de la course
+      exiger(/^\d{4}-\d\d-\d\dT\d\d:\d\d$/.test(q.rejouer || ''), 'heure de départ invalide');
+      const t = new Date(q.rejouer); exiger(t > new Date('2020-01-01') && t < new Date('2100-01-01'), 'heure de départ invalide');
+      const v = +q.vitesse; exiger(VITESSES.includes(v), 'vitesse invalide');
+      Object.assign(info, { rejouer: q.rejouer, vitesse: v });
+      lignes.push(`Environment=REJOUER=${t.toISOString()} VITESSE=${v}`);
+    } else lignes.push('UnsetEnvironment=REJOUER VITESSE');
+    mkdirSync(MODE_DIR, { recursive: true });
+    writeFileSync(MODE_F, `# pxl-mode ${JSON.stringify(info)}\n# posé par /admin — disparaît au redémarrage (retour au mode Course)\n${lignes.join('\n')}\n`);
+  }
+  await run('systemctl', ['daemon-reload']);
+  const r = await run('systemctl', ['restart', 'pxl-serveur']); exiger(r.ok, r.err);
+  return {};
+}
+
 async function machine() {
   const etats = {};
   for (const s of [...RELANCABLES, 'pxl-sante', 'pxl-facade', 'pxl-telecommande', 'pxl-relais', 'seatd', 'chrony', 'tailscaled', 'pxl-admin']) {
@@ -344,8 +393,8 @@ async function wifiParUuid(uuid) {
 async function api(req, u, q) {
   const p = u.pathname;
   if (p === '/api/etat') {
-    const [r, e, w, h, m, s] = await Promise.all([reseau(), ethernet(), wifi(), heure(), machine(), surveillance()]);
-    return { reseau: r, ethernet: e, wifi: w, heure: h, machine: m, materiel: materiel(), surveillance: s, retour: retourEnCours(), retour_s: RETOUR_S };
+    const [r, e, w, h, m, s, v] = await Promise.all([reseau(), ethernet(), wifi(), heure(), machine(), surveillance(), versions()]);
+    return { reseau: r, ethernet: e, wifi: w, heure: h, machine: m, materiel: materiel(), surveillance: s, versions: v, mode: mode(), retour: retourEnCours(), retour_s: RETOUR_S };
   }
   if (p === '/api/wifi/scan') {
     const r = await run('nmcli', ['-t', '-f', 'SSID,SIGNAL,SECURITY', 'dev', 'wifi', 'list', '--rescan', 'yes'], { timeout: 30000 });
@@ -390,6 +439,10 @@ async function api(req, u, q) {
     case '/api/service': exiger(RELANCABLES.includes(q.nom), 'service inconnu');
       { const r = await run('systemctl', ['restart', q.nom]); exiger(r.ok, r.err); return {}; }
     case '/api/redemarrer': setTimeout(() => run('systemctl', ['reboot']), 1500); return {};
+    // extinction PROPRE : systemd arrête tout et démonte la carte SD, la façade s'éteint (pxl-facade --off) — c'est
+    // le signal qu'on peut débrancher. La box ne se rallume qu'en rebranchant l'alimentation.
+    case '/api/eteindre': setTimeout(() => run('systemctl', ['poweroff']), 1500); return {};
+    case '/api/mode': return regleMode(q);
     case '/api/mdp': exiger(verifierMdp(q.ancien), 'ancien mot de passe faux'); ecrireMdp(q.nouveau); return {};
   }
   throw new Refus('route inconnue');

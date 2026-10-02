@@ -15,7 +15,8 @@ envoyer() {   # étape (1-6, F), état (0 attente · 1 en cours · 2 fait · 3 d
 secondes() { cut -d. -f1 /proc/uptime; }   # pas l'horloge : elle saute au moment de la synchronisation
 adresse() { ip -4 -o addr show dev "$1" scope global 2>/dev/null | awk '{sub(/\/.*/, "", $4); print $4}' | grep -vx "${SECOURS:-x}" | head -1; }
 
-envoyer F 0 "$(hostname)"
+V=$(sed -n 's/^recette=//p' /etc/pxl-kiosk/version 2>/dev/null); A=$(cat "${APP_DIR:-/opt/pxl-app}/VERSION" 2>/dev/null)
+envoyer F 0 "$(hostname)${V:+  ·  box v$V}${A:+  ·  habillage v$A}"
 while plymouth --ping 2>/dev/null && [ "$(secondes)" -lt 300 ]; do
   t=$(secondes)
 

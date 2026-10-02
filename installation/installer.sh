@@ -110,6 +110,9 @@ if ! command -v tailscale >/dev/null; then
 fi
 systemctl enable -q tailscaled
 mkdir -p /etc/pxl-kiosk
+# Version de la recette (installation/VERSION) : affichée par /admin et l'écran de démarrage. Celle de l'application
+# est le fichier VERSION à sa racine, recopié avec elle.
+printf 'recette=%s\ninstallee=%s\n' "$(cat "$ICI/VERSION" 2>/dev/null || echo inconnue)" "$(date -Is)" > /etc/pxl-kiosk/version
 if [ $EN_LIGNE = 0 ]; then
   # Dans l'image : la clé attend le premier démarrage (pxl-premier-demarrage), qui l'utilise puis l'efface.
   [ -n "${TS_AUTHKEY:-}" ] && { ( umask 077; printf '%s' "$TS_AUTHKEY" > /etc/pxl-kiosk/ts-authkey ); dire "clé Tailscale posée pour le premier démarrage"; }

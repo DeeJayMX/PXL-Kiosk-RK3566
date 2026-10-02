@@ -55,6 +55,9 @@
   #connexion { max-width: 380px; margin: 12vh auto; }
   .cache { display: none !important; }
   .grandeheure { font-size: 28px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .bandeau-mode { display: none; background: #4a2a06; border: 1px solid #f5a623; color: #ffd28a; border-radius: 8px; padding: 10px 14px; margin-bottom: 16px; font-weight: 600; }
+  .bandeau-mode.visible { display: block; }
+  .version { color: var(--doux); font-size: 12px; margin-left: 8px; }
 </style>
 </head>
 <body>
@@ -71,7 +74,7 @@
 
 <div id="appli" class="cache">
 <header>
-  <h1>Administration</h1><span class="machine" id="nom-machine"></span>
+  <h1>Administration</h1><span class="machine" id="nom-machine"></span><span class="version" id="v-entete"></span>
   <button id="b-rafraichir" type="button">Rafraîchir</button>
   <button id="b-deconnexion" type="button">Quitter</button>
 </header>
@@ -85,9 +88,32 @@
     </div>
   </div>
 
+  <div class="bandeau-mode" id="bandeau-mode"></div>
+
   <section>
     <h2>État</h2>
     <div class="grille" id="etat"></div>
+  </section>
+
+  <section>
+    <h2>Mode du serveur d'habillage</h2>
+    <form id="f-mode">
+      <div class="ligne">
+        <div><label for="mode-choix">Mode</label>
+          <select id="mode-choix">
+            <option value="course">Course — en direct (config.json)</option>
+            <option value="demo">Démo — un trail déjà terminé</option>
+            <option value="repetition">Répétition — Chaumont 2025 rejoué</option>
+          </select></div>
+      </div>
+      <div class="ligne cache" id="mode-rep">
+        <div><label for="mode-heure">Heure de départ (heure de la course)</label><input id="mode-heure" type="datetime-local" value="2025-10-11T19:50"></div>
+        <div><label for="mode-vitesse">Vitesse</label><select id="mode-vitesse"></select></div>
+      </div>
+      <div class="actions"><button class="principal" type="submit">Appliquer — relance le serveur</button></div>
+    </form>
+    <p class="note">Démo et Répétition ont leurs propres réglages : ceux de la course ne sont pas touchés. Au redémarrage
+      de la box, le mode revient <b>toujours</b> sur Course.</p>
   </section>
 
   <section>
@@ -173,7 +199,10 @@
       <button id="b-r-serveur" type="button">Relancer le serveur d'habillage</button>
       <button id="b-r-preview" type="button">Relancer la preview</button>
       <button class="danger" id="b-reboot" type="button">Redémarrer la box</button>
+      <button class="danger" id="b-eteindre" type="button">Éteindre la box</button>
     </div>
+    <h3>Versions</h3>
+    <div class="grille" id="m-versions"></div>
     <h3>Journal</h3>
     <div class="ligne">
       <div><select id="j-unite">
@@ -233,6 +262,25 @@ const duree = s => s < 3600 ? `${Math.round(s / 60)} min` : s < 86400 ? `${Math.
 function rendre() {
   const { reseau: r, ethernet: e, wifi: w, heure: h, machine: m } = E;
   $('#nom-machine').textContent = m.nom;
+  const v = E.versions || {};
+  $('#v-entete').textContent = v.recette ? `v${v.recette}` : '';
+  $('#m-versions').innerHTML = case_('Box (recette)', esc(v.recette ? `v${v.recette}` : 'inconnue') + (v.installee ? ` <small style="display:inline;color:var(--doux)">· installée le ${esc(new Date(v.installee).toLocaleString('fr-FR'))}</small>` : ''))
+    + case_('Application d\'habillage', esc(v.appli ? `v${v.appli}` : 'inconnue'))
+    + case_('Image de la carte', esc((v.image || '—').split('\n')[0].replace(/ — fabriquée.*/, '')))
+    + case_('Noyau', esc(v.noyau || '—')) + case_('Node', esc(v.node || '—')) + case_('Chromium', esc(v.chromium || '—'));
+  // Mode
+  const md = E.mode || { mode: 'course' }, noms = { course: 'Course', demo: 'Démo', repetition: 'Répétition' };
+  const bm = $('#bandeau-mode');
+  bm.classList.toggle('visible', md.mode !== 'course');
+  bm.textContent = md.mode === 'course' ? '' : `⚠️ Mode ${noms[md.mode]}${md.mode === 'repetition' ? ` — Chaumont 2025 depuis ${md.rejouer.replace('T', ' à ')}, ×${md.vitesse}` : ''} : ce n'est PAS la course en direct. Repasser en Course avant l'antenne (ou redémarrer la box).`;
+  if (!$('#f-mode').dataset.touche) {
+    $('#mode-vitesse').innerHTML = (md.vitesses || [1]).map(x => `<option value="${x}">×${x}</option>`).join('');
+    $('#mode-choix').value = md.mode;
+    for (const o of $('#mode-choix').options) o.disabled = o.value !== 'course' && md.disponibles && md.disponibles[o.value] === false;
+    if (md.rejouer) $('#mode-heure').value = md.rejouer;
+    if (md.vitesse) $('#mode-vitesse').value = md.vitesse;
+    $('#mode-rep').classList.toggle('cache', md.mode !== 'repetition');
+  }
   // État
   const ifs = r.adresses.map(i => case_(i.nom, esc(i.adresses.join(' · ') || 'aucune adresse'), i.adresses.length ? '' : 'moyen')).join('');
   $('#etat').innerHTML = case_('Internet', r.internet ? 'joignable' : 'injoignable', r.internet ? 'ok' : 'ko') + ifs
@@ -379,6 +427,16 @@ $('#b-r-serveur').addEventListener('click', ev => confirm('Relancer le serveur d
 $('#b-r-preview').addEventListener('click', ev => action(ev.target, () => appel('/api/service', { nom: 'pxl-preview' }), 'preview relancée'));
 $('#b-reboot').addEventListener('click', ev => confirm('Redémarrer la box ? Environ une minute sans habillage.')
   && action(ev.target, () => appel('/api/redemarrer', {}), 'redémarrage en cours — recharge la page dans une minute'));
+$('#b-eteindre').addEventListener('click', ev => confirm('Éteindre la box ? Plus d\'habillage jusqu\'à ce qu\'on débranche et rebranche l\'alimentation.')
+  && action(ev.target, () => appel('/api/eteindre', {}), 'extinction en cours — quand la façade s\'éteint, on peut débrancher'));
+$('#f-mode').addEventListener('input', () => { $('#f-mode').dataset.touche = 1; $('#mode-rep').classList.toggle('cache', $('#mode-choix').value !== 'repetition'); });
+$('#f-mode').addEventListener('submit', ev => {
+  ev.preventDefault();
+  const m = $('#mode-choix').value;
+  if (m !== 'course' && !confirm('Changer de mode relance le serveur : ce qui est à l\'antenne en sort. Continuer ?')) return;
+  action(ev.submitter, async () => { await appel('/api/mode', { mode: m, rejouer: $('#mode-heure').value, vitesse: $('#mode-vitesse').value });
+    delete $('#f-mode').dataset.touche; }, m === 'course' ? 'retour en mode Course' : 'mode appliqué — le serveur redémarre');
+});
 $('#b-journal').addEventListener('click', ev => action(ev.target, async () => {
   const r = await appel('/api/journal?u=' + encodeURIComponent($('#j-unite').value));
   const p = $('#journal'); p.classList.remove('cache'); p.textContent = r.texte; p.scrollTop = p.scrollHeight;
