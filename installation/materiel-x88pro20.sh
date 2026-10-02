@@ -55,7 +55,7 @@ EOF
   mkdir -p "$CIBLE/usr/local/lib/pxl-kiosk/initramfs"
   install -m 755 "$(dirname "$0")/fichiers/initramfs/facade-initramfs.sh" "$(dirname "$0")/fichiers/initramfs/init-top-pxl-facade" "$CIBLE/usr/local/lib/pxl-kiosk/initramfs/"
   if [ "$CIBLE" = / ]; then bash /usr/local/lib/pxl-kiosk/initramfs/facade-initramfs.sh
-  else dire "⚠️ « boot » sur la façade : à poser SUR LA BOX (uname -r de l'hôte ≠ cible) — /usr/local/lib/pxl-kiosk/initramfs/facade-initramfs.sh"; fi
+  else chroot "$CIBLE" bash /usr/local/lib/pxl-kiosk/initramfs/facade-initramfs.sh || dire "⚠️ « boot » sur la façade non posé dans l'image"; fi
 else
   dire "⚠️ pas de ht1628 sur la source — façade non installée"
 fi

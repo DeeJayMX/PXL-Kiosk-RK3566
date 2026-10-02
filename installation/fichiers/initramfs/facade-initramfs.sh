@@ -9,7 +9,9 @@
 # L'original reste dans /boot/initrd.img-<noyau> ; seul /boot/uInitrd (le lien que lit boot.scr) change de cible.
 # ⚠️ /boot est en ext4 : une carte qui ne démarre plus se répare depuis un Linux (ln -sfn uInitrd-<noyau> uInitrd).
 set -euo pipefail
-K=$(uname -r); B=/boot; ORIG=$B/initrd.img-$K; U=$B/uInitrd-$K; NOUV=$B/uInitrd-$K.pxl
+B=/boot
+# le noyau INSTALLÉ (celui de /boot), pas celui qui tourne : dans le chroot de fabrication d'image, uname -r est l'hôte
+K=${K:-$(ls $B/initrd.img-* | grep -v "\.avant\|\.pxl" | head -1 | sed "s#.*/initrd.img-##")}; ORIG=$B/initrd.img-$K; U=$B/uInitrd-$K; NOUV=$B/uInitrd-$K.pxl
 if [ "${1:-}" = --retirer ]; then ln -sfn "uInitrd-$K" $B/uInitrd; rm -f "$NOUV"; sync; echo "initramfs d'origine rétabli"; exit 0; fi
 [ -x /usr/local/bin/ht1628 ] || { echo "pas de /usr/local/bin/ht1628 : rien à faire"; exit 0; }
 for o in cpio xz mkimage unmkinitramfs lsinitramfs; do command -v $o >/dev/null || { echo "manque $o"; exit 1; }; done

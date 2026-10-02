@@ -14,6 +14,7 @@
 #   WIFI_FICHIER=… : réseaux Wi-Fi à poser (lignes « SSID<TAB>mot de passe<TAB>priorité »), l'Ethernet reste prioritaire
 #   --retoucher /opt/pxl-image/<nom>.img : rejoue installer.sh + matériel dans une image DÉJÀ faite (même
 #   montage, mêmes finitions), sans re-télécharger ni re-décompresser ; clé Tailscale, Wi-Fi, appli et mot de passe gardés
+#   (APP=/chemin avec --retoucher : remplace aussi l'application)
 #   MATERIEL=1 avec --finir : ajoute aussi le Wi-Fi et la façade (materiel-x88pro20.sh) à une image déjà faite
 # Ce que l'image NE porte PAS, et qui naît au premier démarrage : clés SSH, machine-id, inscription Tailscale.
 # TS_AUTHKEY : préférer une clé À USAGE UNIQUE, expirant vite, taguée — elle est effacée dès qu'elle a servi.
@@ -134,9 +135,10 @@ rm -f "$R/etc/resolv.conf"; cp /etc/resolv.conf "$R/etc/resolv.conf"
 
 dire "copie de la recette, de la configuration et de l'application…"
 rm -rf "$R/opt/pxl-kiosk-installation"; cp -r "$ICI" "$R/opt/pxl-kiosk-installation"
-if [ -z "$RETOUCHE" ]; then
+# APP= avec --retoucher : remplace aussi l'application de l'image (sinon elle est gardée telle quelle)
+if [ -z "$RETOUCHE" ] || [ -n "${APP:-}" ]; then
   rsync -a --delete --exclude .git --exclude etat-local --exclude node_modules "$APP/" "$R/opt/pxl-app-source/"
-  cp "$CONF" "$R/etc/pxl-kiosk.conf"
+  [ -z "$RETOUCHE" ] && cp "$CONF" "$R/etc/pxl-kiosk.conf"
   sed -i 's|^APP_SOURCE=.*|APP_SOURCE=/opt/pxl-app-source|' "$R/etc/pxl-kiosk.conf"
 fi
 
