@@ -353,7 +353,9 @@ E=/boot/armbianEnv.txt
 if [ -f "$E" ]; then
   # console=serial : le noyau n'écrit plus sur l'écran HDMI (le pilote Wi-Fi SKW y imprimait ses traces malgré loglevel=1,
   # et elles réapparaissaient entre les étapes et à la fermeture de l'écran de démarrage). Le port série garde tout.
-  sed -i 's/^verbosity=.*/verbosity=1/; s/^bootlogo=.*/bootlogo=false/; s/^console=.*/console=serial/' "$E"
+  sed -i 's/^verbosity=.*/verbosity=1/; s/^bootlogo=.*/bootlogo=false/; s/^console=.*/console=serial/; /^consoleargs=/d' "$E"
+  # ⚠️ une ligne « consoleargs=… console=tty0 » laissée dans armbianEnv.txt est importée telle quelle par boot.scr et
+  # remet l'écran comme console malgré console=serial (mesuré 02/10 : /proc/cmdline la portait encore) — d'où le /d
   # plymouth.graphical : sans lui, plymouthd reste en mode texte (« renderers are being explicitly skipped », vu le 02/10) ;
   # PAS « splash », qui réveillerait aussi le Plymouth de l'initramfs (texte seulement)
   ARGS="quiet logo.nologo vt.global_cursor_default=0 systemd.show_status=false plymouth.ignore-serial-consoles plymouth.graphical"
