@@ -159,9 +159,9 @@ async function machine() {
   return { nom: hostname(), depuis_s: Math.round(uptime()), image: lire('/etc/pxl-kiosk/image'), services: etats };
 }
 // Matériel, mesuré sur la box le 02/10 : deux sondes de température (SoC, GPU) avec les seuils du noyau ; le bridage
-// thermique (cooling devices) ; les fréquences. ⚠️ AUCUNE tension n'est MESURÉE sur cette box : la saradc n'est reliée
-// à rien qui mesure l'alimentation. Les régulateurs n'exposent que leur CONSIGNE — utile pour vdd_cpu / vdd_logic, qui
-// suivent la charge (DVFS) ; les rails fixes (12 V, 5 V, 3,3 V) sont des valeurs nominales, pas des relevés.
+// thermique (cooling devices) ; les fréquences. Pas de tensions : AUCUNE n'est mesurée sur cette box (la saradc n'est
+// reliée à rien qui mesure l'alimentation, pas de détection de sous-tension) — les régulateurs n'exposent que leur
+// consigne, et l'afficher ressemblerait à un relevé (retiré le 02/10, à la demande d'Eliott).
 const lireNb = f => { const v = lire(f); return v == null || v === '' || isNaN(+v) ? null : +v; };
 const dossiers = d => { try { return readdirSync(d).map(x => join(d, x)); } catch { return []; } };
 function materiel() {
@@ -177,12 +177,9 @@ function materiel() {
     nom: (lire(`${z}/type`) || '').replace(/^(devfreq-|cpufreq-)/, '').replace(/^fde60000\.gpu$/, 'GPU').replace(/^cpu0$/, 'CPU')
       .replace(/^fdf40000\.rkvenc$/, 'encodeur vidéo').replace(/^fdf80200\.rkvdec$/, 'décodeur vidéo'),
     niveau: lireNb(`${z}/cur_state`), max: lireNb(`${z}/max_state`) }));
-  const tensions = dossiers('/sys/class/regulator').map(r => ({ nom: lire(`${r}/name`), uv: lireNb(`${r}/microvolts`) }))
-    .filter(r => r.uv).map(r => ({ nom: r.nom, v: r.uv / 1e6, variable: /^vdd_(cpu|logic|gpu|npu)$/.test(r.nom) }))
-    .sort((a, b) => b.variable - a.variable || b.v - a.v);
   const freq = f => { const v = lireNb(f); return v == null ? null : v; };
   return {
-    temperatures, bridage, tensions,
+    temperatures, bridage,
     cpu_mhz: (freq('/sys/devices/system/cpu/cpufreq/policy0/scaling_cur_freq') ?? 0) / 1e3,
     cpu_max_mhz: (freq('/sys/devices/system/cpu/cpufreq/policy0/cpuinfo_max_freq') ?? 0) / 1e3,
     gpu_mhz: (freq('/sys/class/devfreq/fde60000.gpu/cur_freq') ?? 0) / 1e6,

@@ -93,10 +93,6 @@
   <section>
     <h2>Matériel</h2>
     <div class="grille" id="mat-temp"></div>
-    <h3>Tensions</h3>
-    <div class="grille" id="mat-tensions"></div>
-    <p class="note">⚠️ Ce sont les <b>consignes</b> des régulateurs, pas des mesures : cette box n'a aucun capteur de tension
-      (ni détection de sous-tension). vdd_cpu et vdd_logic suivent la charge ; les autres rails sont des valeurs nominales.</p>
   </section>
 
   <section>
@@ -256,8 +252,6 @@ function rendre() {
     + case_('Bridage thermique', bride.length ? esc(bride.map(b => `${b.nom} ${b.niveau}/${b.max}`).join(' · ')) : 'aucun', bride.length ? 'ko' : 'ok')
     + case_('Processeur', `${nb(mt.cpu_mhz)} MHz <small style="display:inline;color:var(--doux)">/ ${nb(mt.cpu_max_mhz)}</small>`)
     + case_('GPU', `${nb(mt.gpu_mhz)} MHz`);
-  $('#mat-tensions').innerHTML = mt.tensions.map(t => case_(t.nom + (t.variable ? ' (suit la charge)' : ''),
-    `${nb(t.v, t.v < 2 ? 3 : 1)} V`)).join('');
   // Surveillance
   const sv = E.surveillance, oct = o => o == null ? '—' : o < 1024 ** 2 ? `${nb(o / 1024)} Ko` : o < 1024 ** 3 ? `${nb(o / 1024 ** 2, 1)} Mo` : `${nb(o / 1024 ** 3, 2)} Go`;
   const hz = +((sv.hdmi.mode || '').match(/p([\d.]+)$/) || [])[1] || null;
