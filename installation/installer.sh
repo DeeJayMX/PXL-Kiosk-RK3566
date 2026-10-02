@@ -306,10 +306,12 @@ printf '[Service]\nTimeoutStartSec=60\n' > /etc/systemd/system/chrony-wait.servi
 T=/usr/share/plymouth/themes/pxl
 mkdir -p "$T"
 install -m 644 "$ICI/fichiers/plymouth-pxl/pxl.plymouth" "$ICI/fichiers/plymouth-pxl/pxl.script" "$T/"
-# le logo : SVG rendu en PNG par le Chromium de la box (aucun binaire dans le dépôt), fond transparent
+# le logo : SVG rendu en PNG par le Chromium de la box (aucun binaire dans le dépôt), fond transparent.
+# ⚠️ en 100vw/100vh et pas en 1400×780 px : en --headless=new la zone utile est plus petite que --window-size, et un
+# logo en pixels fixes y sortait rogné en bas et à droite (mesuré 02/10 : « mstrs » coupé, le point manquant)
 R=$(mktemp -d)
 cp "$ICI/fichiers/plymouth-pxl/logo-pxl.svg" "$R/"
-printf '<!doctype html><style>html,body{margin:0;background:transparent}img{display:block;width:1400px;height:780px}</style><img src="logo-pxl.svg">' > "$R/l.html"
+printf '<!doctype html><style>html,body{margin:0;background:transparent}img{display:block;width:100vw;height:100vh;object-fit:contain}</style><img src="logo-pxl.svg">' > "$R/l.html"
 chromium --headless=new --no-sandbox --disable-gpu --hide-scrollbars --default-background-color=00000000 \
   --user-data-dir="$R/profil" --window-size=1400,780 --screenshot="$R/logo.png" "file://$R/l.html" >/dev/null 2>&1 || true
 if [ -s "$R/logo.png" ]; then install -m 644 "$R/logo.png" "$T/logo.png"; else dire "⚠️ logo de démarrage non rendu (Chromium) : l'écran montrera « pxl mstrs. » en texte"; fi

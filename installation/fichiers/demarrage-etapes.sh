@@ -15,7 +15,7 @@ envoyer() {   # étape (1-6, F), état (0 attente · 1 en cours · 2 fait · 3 d
 secondes() { cut -d. -f1 /proc/uptime; }   # pas l'horloge : elle saute au moment de la synchronisation
 adresse() { ip -4 -o addr show dev "$1" scope global 2>/dev/null | awk '{sub(/\/.*/, "", $4); print $4}' | grep -vx "${SECOURS:-x}" | head -1; }
 
-envoyer F 0 "$(hostname) · ${NOM_MACHINE:-pxl-habillage}"
+envoyer F 0 "$(hostname)"
 while plymouth --ping 2>/dev/null && [ "$(secondes)" -lt 300 ]; do
   t=$(secondes)
 
@@ -38,7 +38,7 @@ while plymouth --ping 2>/dev/null && [ "$(secondes)" -lt 300 ]; do
   elif [ "$t" -gt 90 ]; then envoyer 3 4 "aucun serveur de temps — heure NON fiable   (façade : ntP)"
   else envoyer 3 1 "synchronisation…   (façade : ntP)"; fi
 
-  # 4 · Tailscale
+  # 4 · PXLnet (Tailscale)
   ts=$(tailscale ip -4 2>/dev/null | head -1)
   if [ -n "$ts" ] && tailscale status --json 2>/dev/null | grep -q '"BackendState": *"Running"'; then envoyer 4 2 "$ts"
   elif systemctl is-active -q tailscaled; then envoyer 4 1 "connexion…"

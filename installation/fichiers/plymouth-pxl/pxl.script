@@ -1,6 +1,6 @@
 # Écran de démarrage PXL (Plymouth, module « script ») : grand logo centré, puis les étapes du démarrage.
 # Les étapes arrivent par `plymouth update --status="pxl|K|S|détail"` (envoyées par demarrage-etapes.sh) :
-#   K = 1 système · 2 réseau · 3 heure · 4 Tailscale · 5 serveur (d'habillage) · 6 preview · F = pied de page
+#   K = 1 système · 2 réseau · 3 heure · 4 PXLnet (Tailscale) · 5 serveur (d'habillage) · 6 preview · F = pied de page
 #   S = 0 en attente · 1 en cours · 2 fait · 3 en défaut · 4 avertissement
 # Le langage de script de Plymouth n'a pas de découpage de chaîne : le format est FIXE (K en position 4, S en 6, détail à 8).
 # Les autres messages de mise à jour sont ceux de systemd (nom de l'unité qui démarre) : ils servent de détail à « Système ».
@@ -25,7 +25,7 @@ if (logo) {
 
 # ---- les étapes
 num["1"] = 1; num["2"] = 2; num["3"] = 3; num["4"] = 4; num["5"] = 5; num["6"] = 6;
-noms[1] = "Système"; noms[2] = "Réseau"; noms[3] = "Heure"; noms[4] = "Tailscale"; noms[5] = "Serveur"; noms[6] = "Preview";
+noms[1] = "Système"; noms[2] = "Réseau"; noms[3] = "Heure"; noms[4] = "PXLnet"; noms[5] = "Serveur"; noms[6] = "Preview";
 x0 = W / 2 - 330 * k; y0 = H * 0.58; pas = 46 * k;
 for (i = 1; i <= 6; i++) {
   etat[i] = "0"; detail[i] = "";
