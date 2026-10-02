@@ -351,7 +351,9 @@ systemctl enable -q pxl-plymouth.service pxl-etapes.service
 # Démarrage sans texte : noyau muet, pas de pingouin, pas de curseur, pas d'état systemd à l'écran (armbianEnv.txt, idempotent)
 E=/boot/armbianEnv.txt
 if [ -f "$E" ]; then
-  sed -i 's/^verbosity=.*/verbosity=1/; s/^bootlogo=.*/bootlogo=false/' "$E"
+  # console=serial : le noyau n'écrit plus sur l'écran HDMI (le pilote Wi-Fi SKW y imprimait ses traces malgré loglevel=1,
+  # et elles réapparaissaient entre les étapes et à la fermeture de l'écran de démarrage). Le port série garde tout.
+  sed -i 's/^verbosity=.*/verbosity=1/; s/^bootlogo=.*/bootlogo=false/; s/^console=.*/console=serial/' "$E"
   # plymouth.graphical : sans lui, plymouthd reste en mode texte (« renderers are being explicitly skipped », vu le 02/10) ;
   # PAS « splash », qui réveillerait aussi le Plymouth de l'initramfs (texte seulement)
   ARGS="quiet logo.nologo vt.global_cursor_default=0 systemd.show_status=false plymouth.ignore-serial-consoles plymouth.graphical"

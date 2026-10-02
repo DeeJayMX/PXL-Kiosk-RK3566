@@ -9,5 +9,7 @@ plymouth --ping 2>/dev/null || exit 0
 for i in $(seq 90); do curl -sf -m 1 -o /dev/null "http://127.0.0.1:${APP_PORT:-8765}/api/sante" && break; sleep 1; done
 plymouth update --status="pxl|6|1|ouverture de l'affichage…" 2>/dev/null
 sleep 0.4
+# la console texte (tty1) réapparaît une fraction de seconde entre Plymouth et Weston : on la vide et on masque le curseur
+printf '\033[H\033[2J\033[3J\033[?25l' > /dev/tty1 2>/dev/null
 plymouth quit --retain-splash 2>/dev/null
 exit 0
