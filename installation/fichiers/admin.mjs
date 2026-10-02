@@ -14,7 +14,7 @@
 // Écritures sur la carte SD : seulement quand on ENREGISTRE un réglage (décision du 02/10/2026 : le minimum d'écritures).
 import { createServer } from 'node:http';
 import { execFile } from 'node:child_process';
-import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync, renameSync, chmodSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync, renameSync, chmodSync, readdirSync } from 'node:fs';
 import { randomBytes, randomUUID, scryptSync, timingSafeEqual, createHmac, createHash } from 'node:crypto';
 import { hostname, uptime } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -158,6 +158,36 @@ async function machine() {
   }
   return { nom: hostname(), depuis_s: Math.round(uptime()), image: lire('/etc/pxl-kiosk/image'), services: etats };
 }
+// Matériel, mesuré sur la box le 02/10 : deux sondes de température (SoC, GPU) avec les seuils du noyau ; le bridage
+// thermique (cooling devices) ; les fréquences. ⚠️ AUCUNE tension n'est MESURÉE sur cette box : la saradc n'est reliée
+// à rien qui mesure l'alimentation. Les régulateurs n'exposent que leur CONSIGNE — utile pour vdd_cpu / vdd_logic, qui
+// suivent la charge (DVFS) ; les rails fixes (12 V, 5 V, 3,3 V) sont des valeurs nominales, pas des relevés.
+const lireNb = f => { const v = lire(f); return v == null || v === '' || isNaN(+v) ? null : +v; };
+const dossiers = d => { try { return readdirSync(d).map(x => join(d, x)); } catch { return []; } };
+function materiel() {
+  const temperatures = dossiers('/sys/class/thermal').filter(z => /thermal_zone\d+$/.test(z)).map(z => {
+    // seuils typés : « passive » = le noyau commence à brider, « critical » = coupure d'urgence (le GPU n'a que celui-là)
+    const seuils = dossiers(z).filter(f => /trip_point_\d+_temp$/.test(f)).map(f => ({
+      type: lire(f.replace(/_temp$/, '_type')), c: lireNb(f) / 1000 })).sort((x, y) => x.c - y.c);
+    const premier = t => (seuils.find(x => x.type === t) || {}).c ?? null;
+    return { nom: (lire(`${z}/type`) || '').replace(/-thermal$/, ''), c: (lireNb(`${z}/temp`) ?? NaN) / 1000,
+      bridage: premier('passive'), coupure: premier('critical') };
+  }).filter(t => isFinite(t.c));
+  const bridage = dossiers('/sys/class/thermal').filter(z => /cooling_device\d+$/.test(z)).map(z => ({
+    nom: (lire(`${z}/type`) || '').replace(/^(devfreq-|cpufreq-)/, '').replace(/^fde60000\.gpu$/, 'GPU').replace(/^cpu0$/, 'CPU')
+      .replace(/^fdf40000\.rkvenc$/, 'encodeur vidéo').replace(/^fdf80200\.rkvdec$/, 'décodeur vidéo'),
+    niveau: lireNb(`${z}/cur_state`), max: lireNb(`${z}/max_state`) }));
+  const tensions = dossiers('/sys/class/regulator').map(r => ({ nom: lire(`${r}/name`), uv: lireNb(`${r}/microvolts`) }))
+    .filter(r => r.uv).map(r => ({ nom: r.nom, v: r.uv / 1e6, variable: /^vdd_(cpu|logic|gpu|npu)$/.test(r.nom) }))
+    .sort((a, b) => b.variable - a.variable || b.v - a.v);
+  const freq = f => { const v = lireNb(f); return v == null ? null : v; };
+  return {
+    temperatures, bridage, tensions,
+    cpu_mhz: (freq('/sys/devices/system/cpu/cpufreq/policy0/scaling_cur_freq') ?? 0) / 1e3,
+    cpu_max_mhz: (freq('/sys/devices/system/cpu/cpufreq/policy0/cpuinfo_max_freq') ?? 0) / 1e3,
+    gpu_mhz: (freq('/sys/class/devfreq/fde60000.gpu/cur_freq') ?? 0) / 1e6,
+  };
+}
 function retourEnCours() {
   try { const r = JSON.parse(readFileSync(RETOUR, 'utf8')); return { quoi: r.quoi, expire: r.expire }; } catch { return null; }
 }
@@ -253,7 +283,7 @@ async function api(req, u, q) {
   const p = u.pathname;
   if (p === '/api/etat') {
     const [r, e, w, h, m] = await Promise.all([reseau(), ethernet(), wifi(), heure(), machine()]);
-    return { reseau: r, ethernet: e, wifi: w, heure: h, machine: m, retour: retourEnCours(), retour_s: RETOUR_S };
+    return { reseau: r, ethernet: e, wifi: w, heure: h, machine: m, materiel: materiel(), retour: retourEnCours(), retour_s: RETOUR_S };
   }
   if (p === '/api/wifi/scan') {
     const r = await run('nmcli', ['-t', '-f', 'SSID,SIGNAL,SECURITY', 'dev', 'wifi', 'list', '--rescan', 'yes'], { timeout: 30000 });
