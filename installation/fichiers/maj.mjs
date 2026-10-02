@@ -115,21 +115,26 @@ async function poser(c, commit) {
     }
   }
 }
+// la carte SD de la box est montée en commit=600 : sans sync, une coupure de courant dans les 10 min qui suivent efface
+// la mise à jour (vu le 02/10 : v1.2.6 appliquée, alimentation coupée, la box est revenue en v1.2.5)
+const graver = () => run('sync', []);
 export async function appliquer(c, { commit = null, relancer = null } = {}) {
   exiger(CIBLES[c], 'cible inconnue');
   const n = note(), v = n[c]?.verifie;
   const vise = commit || v?.commit; exiger(vise, 'vérifier d\'abord ce qui est disponible');
   const avant = n[c]?.commit || null;
   await poser(c, vise);
+  await graver();
   noter({ ...note(), [c]: { ...(note()[c] || {}), commit: vise, precedent: avant && avant !== vise ? avant : n[c]?.precedent || null, le: new Date().toISOString() } });
   if (c === 'app') {
+    await graver();
     if (relancer ?? v?.relance ?? true) { const r = await run('systemctl', ['restart', 'pxl-serveur']); exiger(r.ok, r.err); return { relance: true }; }
     return { relance: false };
   }
   // box : on rejoue installer.sh depuis le clone, dans une unité à part (elle relance aussi pxl-admin : la page perd
   // la main un moment, l'installation, elle, continue). Journal : journalctl -u pxl-maj-box
   await run('systemctl', ['reset-failed', 'pxl-maj-box']);
-  const r = await run('systemd-run', ['--unit=pxl-maj-box', '--collect', 'bash', join(clone(c), 'installation/installer.sh')]);
+  const r = await run('systemd-run', ['--unit=pxl-maj-box', '--collect', 'bash', '-c', `bash ${join(clone(c), 'installation/installer.sh')}; r=$?; sync; exit $r`]);
   exiger(r.ok, r.err);
   return { relance: true, journal: 'pxl-maj-box' };
 }

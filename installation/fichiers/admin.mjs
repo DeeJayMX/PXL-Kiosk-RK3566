@@ -419,6 +419,11 @@ async function api(req, u, q) {
   }
   if (p === '/api/maj') return enRefus(maj.etat());
   if (req.method !== 'POST') throw new Refus('méthode');
+  try { return await actionPost(p, q); }
+  // tout réglage est gravé aussitôt : la carte SD est en commit=600, une coupure de courant effacerait 10 min de réglages
+  finally { await run('sync', []); }
+}
+async function actionPost(p, q) {
   switch (p) {
     case '/api/ethernet': return regleEthernet(q);
     case '/api/confirmer': await confirmer(); return {};
