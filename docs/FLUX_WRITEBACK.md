@@ -39,3 +39,48 @@ Weston est tenu (`apt-mark hold weston libweston-13-0`) et notre module remplace
 (marqueur `/etc/pxl-kiosk/weston-pxl`). Pour prendre une mise à jour : `apt-mark unhold weston libweston-13-0 &&
 apt-get install weston`, puis `weston-pxl.sh`. **Si le patch ne s'applique plus, le module d'Ubuntu est gardé** (l'écran
 marche, le flux est indisponible) : fusionner le patch à la main. Retour arrière : `weston-pxl.sh --retirer`.
+
+## ENTRELACÉ (1080i50) — le writeback n'écrit qu'UNE trame (ajout du 03/10/2026)
+
+**Mesuré d'abord (03/10, flux v1.7.0 en 1080i50)** : 1920×1080 annoncé, mais seules les **540 premières lignes** sont
+écrites, avec toute l'image écrasée dedans ; le reste du tampon reste à zéro (vert en NV12). Ce n'est **pas** un NV12
+mal calé : les couleurs de la moitié écrite sont justes, donc le plan UV est au bon endroit.
+
+**Lu dans le pilote** (ophub `linux-6.1.y-rockchip`, 6.1.174 — la box est en 6.1.141, même lignée) :
+- en entrelacé le port vidéo passe en `p2i_en` (progressif → entrelacé) et travaille trame par trame (`Fixed V: 540`
+  dans `summary`) ; le writeback écrit ce qu'il reçoit ;
+- les registres du writeback RK3568/66 sont **onze** : format, adresses Y/UV, réduction X, réduction Y ½, r2y, dither,
+  port. **Ni pas de ligne, ni hauteur, ni parité de trame** (le pas, le « oneshot » n'arrivent qu'au RK3576) ;
+- `dsp_field_pol` existe, mais c'est la polarité du signal **HDMI** ; aucun `WB_FIELD_POL`, aucune propriété de device
+  tree de polarité (vérifié le 03/10 contre une suggestion externe qui les citait).
+- une capture = **une trame** : armée au commit, écrite pendant la trame suivante, coupée au début de celle d'après
+  (`vop2_wb_handler`, appelé à chaque début de trame).
+
+**La parité existe dans le matériel, pas dans le writeback** (mesuré, lecture de registre par `/dev/mem`) : le compteur
+de lignes de `SYS_STATUS0` (bits 16-28) va de **0 à 1124 en 40 ms**, sur l'image entière. Les bits 0-15 ne portent pas
+de trame (le bit 1 bat à chaque LIGNE). ⚠️ Inutilisable tel quel : `pxl-wb` tourne en `pxl`, sans `/dev/mem`.
+
+**La solution (v1.8.0) : capturer les DEUX trames et les tisser à la RGA.**
+- **Weston** capture par **paires** de trames consécutives (rang 1, puis rang 2 dans le message FRAME) et joint à chacune
+  son **numéro de vblank** (`drmCrtcGetSequence`, lu dans l'événement de flip du commit : c'est la trame en cours
+  d'écriture). Mesuré : **187 paires sur 187 consécutives** (20,0 ms d'écart), 2 à 12 lignes après le début de trame.
+- **Tisser, sans que le processeur touche un pixel** : un NV12 1920×1080 a exactement la disposition d'un NV12
+  **3840×540** dont la moitié gauche porte les lignes paires et la droite les impaires — Y **et** UV. Tisser = **deux
+  copies RGA ordinaires** (trame du haut à gauche, du bas à droite), coordonnées paires, 3840 ≤ 4096 (RGA2 du RK3566).
+  Validé d'abord en fabriquant ce même 3840×540 avec ffmpeg (`hstack`) et en le relisant en 1920×1080.
+- **Quelle trame en haut** : parité du numéro de vblank, à un décalage près appris sur l'IMAGE — l'ordre juste est le
+  plus lisse entre lignes voisines (mesuré : **1,69 contre 2,81** ; le mauvais ordre peigne le texte, vu au zoom).
+  Re-vérifié une paire sur 25 ; trois désaccords francs basculent le décalage. ⚠️ **Une paire ne commence pas toujours
+  sur la même trame** (une recomposition ratée la décale, mesuré : rang 1 tombé 123 fois sur une parité, 65 sur
+  l'autre) : on ne fige jamais « la première de la paire va en haut ».
+- ⚠️ Petite réserve : la chroma d'une trame recopiée dans une image progressive est décalée d'une demi-ligne de chroma
+  (bords colorés très fins). C'est le défaut ordinaire d'un entrelacé encodé en progressif.
+
+| Mesuré sur la box (03/10/2026, 1080i50, flux 25 img/s demandées, 6 Mbit/s) | |
+|---|---|
+| cadence du flux | **23,5 à 24,0 img/s** — 4 à 6 paires cassées / 10 s (recomposition ratée entre les deux trames) |
+| ordre des trames | appris en < 1 s ; **17 à 27 accords, 0 bascule** par tranche de 10 s ; « indécis » = image trop uniforme |
+| image | **1920×1080 complète, texte net** (enregistrement `thq-record`, décodé par ffmpeg, vérifié au zoom) |
+| temps par image | ≈ 41 ms de la 1ʳᵉ barrière à l'encodage (dont ≈ 22 ms d'attente de la 2ᵉ trame) |
+| 720p50 (non-régression) | **24,9 img/s**, inchangé |
+| ⚠️ non mesuré | l'effet sur la cadence de l'écran en 1080i (rAF) ; `idet` de ffmpeg ne tranche pas sur un multiview presque fixe |

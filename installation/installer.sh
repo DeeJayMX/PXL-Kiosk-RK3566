@@ -106,7 +106,7 @@ apt_progres() { local t pct dernier=10 _; while IFS=: read -r t _ pct _; do case
 apt-get install -y -qq --no-install-recommends -o APT::Status-Fd=3 \
   chromium chromium-sandbox libv4l-rkmpp libv4l-0t64 v4l-utils librockchip-mpp1 rockchip-multimedia-config \
   weston seatd libgl1-mesa-dri libegl-mesa0 libgbm1 fonts-dejavu-core fonts-liberation chrony bluez \
-  plymouth plymouth-label gcc libc6-dev libdrm-dev librockchip-mpp-dev >/dev/null 3> >(apt_progres)   # gcc + libdrm-dev : pxl-mode (1080i), compilé ici
+  plymouth plymouth-label gcc libc6-dev libdrm-dev librockchip-mpp-dev librga-dev >/dev/null 3> >(apt_progres)   # gcc + libdrm-dev : pxl-mode (1080i), compilé ici
 progres 60 "paquets système"
 apt-cache policy chromium | grep -q 'Installed:.*rkmpp' || meurs "chromium installé n'est pas celui du PPA (rkmpp)"
 
@@ -364,7 +364,7 @@ install -m 755 "$ICI/fichiers/demarrage-etapes.sh"    "$LIB/demarrage-etapes.sh"
 # pxl-mode : pose un mode que Weston ne sait pas choisir (1080i50) — compilé sur la box, jamais de binaire dans le dépôt
 gcc -O2 -I/usr/include/libdrm -o "$LIB/pxl-mode" "$ICI/fichiers/pxl-mode.c" -ldrm || meurs "compilation de pxl-mode impossible"
 # flux TurboHQ de la sortie HDMI : encodeur (MPP, sans copie), client TurboHQ embarqué, Weston patché
-gcc -O2 -o "$LIB/pxl-wb-enc" "$ICI/fichiers/pxl-wb-enc.c" -lrockchip_mpp || meurs "compilation de pxl-wb-enc impossible"
+gcc -O2 -o "$LIB/pxl-wb-enc" "$ICI/fichiers/pxl-wb-enc.c" -lrockchip_mpp -lrga || meurs "compilation de pxl-wb-enc impossible"
 install -m 755 "$ICI/fichiers/pxl-wb.sh" "$LIB/pxl-wb.sh"
 install -m 755 "$ICI/fichiers/weston-pxl.sh" "$LIB/weston-pxl.sh"
 install -m 644 "$ICI/patches/weston-writeback-flux.patch" "$LIB/weston-writeback-flux.patch"
