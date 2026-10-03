@@ -8,8 +8,20 @@ export LIBSEAT_BACKEND=seatd
 # Mode entrelacé (1080i50) : Weston ne sait pas le choisir (il prend le 1080p50) — pxl-mode le pose d'abord, et weston.ini
 # porte alors « mode=current » (installer.sh, /admin). Échec ⇒ on continue : Weston prendra le mode courant, quel qu'il soit.
 case "$SORTIE_MODE" in *i@*) /usr/local/lib/pxl-kiosk/pxl-mode "$SORTIE_MODE" "${SORTIE_NOM:-HDMI-A-1}" || true ;; esac
+# Entrelacé en PsF (ENTRELACE=psf, réglé dans /admin) : Weston patché se cadence à l'IMAGE (25 Hz en 1080i50) au lieu de
+# la trame — Chromium dessine 25 img/s, chaque image occupe ses deux trames (écran et flux propres en mouvement). Sans le
+# Weston patché, la variable est ignorée.
+# ⚠ Et Weston y compose avec une fenêtre de 15 ms au lieu de 7 : à 7, une image sur ~5 ratait sa trame et retombait
+# sur une trame du bas (recalage, flux à 22-23 img/s) ; mesuré 03/10 : 7 ms → 43 glissements / 10 s, 12 → 3, 15 → 1 à
+# 3, 18 → 0 mais Chromium perd une image. Seulement en PsF : en 50i une trame dure 20 ms, 15 affameraient Chromium.
+INI=/etc/pxl-kiosk/weston.ini
+if [ "${ENTRELACE:-50i}" = psf ]; then
+  export PXL_PSF=1
+  INI="$XDG_RUNTIME_DIR/weston-psf.ini"
+  sed '/^repaint-window=/d; s/^\[core\]$/[core]\nrepaint-window=15/' /etc/pxl-kiosk/weston.ini > "$INI"
+fi
 
-weston --config=/etc/pxl-kiosk/weston.ini --log="$XDG_RUNTIME_DIR/weston.log" &
+weston --config="$INI" --log="$XDG_RUNTIME_DIR/weston.log" &
 WESTON=$!
 for i in $(seq 100); do [ -S "$XDG_RUNTIME_DIR/wayland-1" ] && break; sleep 0.1; done
 [ -S "$XDG_RUNTIME_DIR/wayland-1" ] || { echo "Weston n'a pas ouvert son socket — $XDG_RUNTIME_DIR/weston.log"; exit 1; }

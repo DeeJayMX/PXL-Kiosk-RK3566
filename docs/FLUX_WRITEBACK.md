@@ -84,3 +84,43 @@ de trame (le bit 1 bat à chaque LIGNE). ⚠️ Inutilisable tel quel : `pxl-wb`
 | temps par image | ≈ 41 ms de la 1ʳᵉ barrière à l'encodage (dont ≈ 22 ms d'attente de la 2ᵉ trame) |
 | 720p50 (non-régression) | **24,9 img/s**, inchangé |
 | ⚠️ non mesuré | l'effet sur la cadence de l'écran en 1080i (rAF) ; `idet` de ffmpeg ne tranche pas sur un multiview presque fixe |
+
+## PsF — « 25p propre » en 1080i (ajout du 03/10/2026, v1.9.0)
+
+En 50i, Weston se cadence à la **trame** (lu : `modes.c` double la fréquence d'un mode entrelacé) et Chromium dessine
+jusqu'à 50 img/s : les deux trames d'une paire peuvent être **deux images différentes**, et le flux tissé peigne ce qui
+bouge (l'écran, lui, est en vrai 50i). Le réglage **« Cadence en entrelacé » de /admin** (`ENTRELACE=50i|psf` dans
+`/etc/pxl-kiosk.conf`) offre l'autre choix :
+
+- **PsF** (`PXL_PSF=1`, posé par `preview.sh`) : Weston se cadence à l'**image** (25 Hz) ; Chromium suit (rAF mesuré
+  **25,0 img/s**, pire intervalle 40,1 ms) et fait deux fois moins de travail ;
+- la **seconde trame** est capturée par un **commit atomique à nous** qui ne porte que le writeback (+ `ACTIVE` du CRTC,
+  sans quoi le noyau refuse le travail) — rien n'est recomposé, Chromium ne voit rien ;
+- chaque image est **calée sur la trame du haut** dès que l'encodeur a appris la parité (message `PARITE` vers Weston) :
+  une image mal placée est datée d'une trame plus tard, Weston programme la suivante sur une trame du haut ;
+- la fenêtre de composition de Weston passe à **15 ms** (au lieu de 7), en PsF seulement.
+
+**Trois erreurs en route, chacune mesurée avant d'être corrigée** :
+1. dater l'image mal placée d'une trame **plus tôt** ne laissait que ~13 ms à Weston : il ratait la trame et retombait
+   sur une trame du bas (recalage toutes les ~120 ms, flux à 21 img/s) ⇒ la dater plus **tard** ;
+2. avant le commit suivant de Weston, j'attendais la **fin du writeback** de notre seconde capture — elle arrive une
+   trame trop tard (début de la trame d'après) : Weston ratait sa trame (flux à 16 img/s, ~9 recalages/s) ⇒ attendre
+   seulement que notre commit soit **appliqué** (compteur de vblank) ;
+3. restait 22-23 img/s. Hypothèse « le minuteur de recomposition part trop tard » : **essayée, sans effet, retirée**.
+   La sonde a tranché : écarts entre premières trames capturées **2 → 153, 3 → 43, 4 → 8** sur 10 s, donc des images
+   qui glissent d'une trame. Cause : la fenêtre de composition de 7 ms, trop courte pour un 1080 sur le Mali.
+
+| Fenêtre de composition (PsF, 03/10/2026) | glissements / 10 s | rAF de Chromium |
+|---|---|---|
+| 7 ms (défaut de Weston) | 43 + 8 images perdues | 25,0 |
+| 12 ms | 3 | 25,0 (pire 40,1 ms) |
+| **15 ms (retenu)** | **1 à 3** | 25,0 ; ⚠️ un trou de 80 ms environ toutes les 12 s |
+| 18 ms | 0 | 24,7 (pire 80 ms : Chromium perd une image) |
+
+| Mesuré sur la box (03/10/2026, 1080i50, flux 25 img/s, 6 Mbit/s) | 50i | **PsF** |
+|---|---|---|
+| Chromium (rAF) | 48,3 img/s | **25,0 img/s** |
+| flux | 23,1-23,5 img/s, 4 à 7 paires cassées / 10 s | **24,7-25,0 img/s, 0 paire cassée** |
+| recalages | — | 3 au démarrage, puis aucun en régime |
+| image du flux | nette (fixe), peigne ce qui bouge (déduit) | nette (zoom sur l'horloge) |
+| ⚠️ non mesuré | | le rendu sur un diffuseur qui désentrelace en « tissage » ; le calage est fait pour lui |

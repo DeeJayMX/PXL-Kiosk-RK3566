@@ -1,6 +1,6 @@
 diff -ruN a/libweston/backend-drm/drm-internal.h b/libweston/backend-drm/drm-internal.h
 --- a/libweston/backend-drm/drm-internal.h	2026-10-03 09:15:12.909672074 +0000
-+++ b/libweston/backend-drm/drm-internal.h	2026-10-03 09:15:12.915800424 +0000
++++ b/libweston/backend-drm/drm-internal.h	2026-10-03 09:46:17.181363718 +0000
 @@ -592,6 +592,10 @@
  	 * framebuffers in every drm_plane_state of the output state that we've
  	 * used to request the writeback job */
@@ -12,7 +12,7 @@ diff -ruN a/libweston/backend-drm/drm-internal.h b/libweston/backend-drm/drm-int
  };
  
  struct drm_writeback {
-@@ -719,6 +723,12 @@
+@@ -719,6 +723,17 @@
  enum writeback_screenshot_state
  drm_output_get_writeback_state(struct drm_output *output);
  
@@ -21,13 +21,18 @@ diff -ruN a/libweston/backend-drm/drm-internal.h b/libweston/backend-drm/drm-int
 +pxl_wb_attach_needed(struct drm_writeback_state *state);
 +void
 +pxl_wb_attached(struct drm_writeback_state *state, bool ok);
++bool
++pxl_psf(void);
++void
++pxl_psf_flip(struct drm_output *output, unsigned int frame,
++	     unsigned int *sec, unsigned int *usec);
 +
  void
  drm_output_destroy(struct weston_output *output_base);
  void
 diff -ruN a/libweston/backend-drm/drm.c b/libweston/backend-drm/drm.c
 --- a/libweston/backend-drm/drm.c	2026-10-03 09:15:12.909548909 +0000
-+++ b/libweston/backend-drm/drm.c	2026-10-03 09:25:10.209278959 +0000
++++ b/libweston/backend-drm/drm.c	2026-10-03 10:04:37.161679893 +0000
 @@ -68,6 +68,8 @@
  #include "linux-dmabuf.h"
  #include "linux-dmabuf-unstable-v1-server-protocol.h"
@@ -45,7 +50,7 @@ diff -ruN a/libweston/backend-drm/drm.c b/libweston/backend-drm/drm.c
  	wl_array_init(&state->referenced_fbs);
  
  	return state;
-@@ -539,6 +542,399 @@
+@@ -539,6 +542,538 @@
  	free(state);
  }
  
@@ -70,12 +75,18 @@ diff -ruN a/libweston/backend-drm/drm.c b/libweston/backend-drm/drm.c
 + *    lignes, rien d'autre dans ses registres de writeback). On capture donc
 + *    par PAIRES de trames consécutives (rang 1 puis 2, avec le numéro de
 + *    vblank de chacune) ; l'encodeur les tisse à la RGA. Mesuré 03/10/2026 :
-+ *    187 paires sur 187 consécutives, image 1920×1080 complète.
++ *    187 paires sur 187 consécutives, image 1920×1080 complète ;
++ *  - PsF (PXL_PSF=1, réglage « 25p propre » de /admin) : Weston se cadence à
++ *    l'IMAGE (modes.c), donc une image tient deux trames ; la seconde trame
++ *    est capturée par un commit atomique À NOUS qui ne porte que le writeback
++ *    (aucun plan, aucune recomposition, donc aucun rappel d'image à Chromium),
++ *    et les images sont calées sur la trame du haut dès que l'encodeur a
++ *    appris la parité (message PARITE).
 + * Leçons de la TurboNode : PXL-TurboHQ/TurboNode/WRITEBACK.md.
 + * ═══════════════════════════════════════════════════════════════════════════ */
 +#define PXL_WB_N 6
 +#define PXL_WB_MAGIC 0x57584c50u	/* « PXLW » */
-+enum { PXL_WB_HELLO = 1, PXL_WB_RELEASE = 2, PXL_WB_RING = 10, PXL_WB_FRAME = 11, PXL_WB_STATS = 12 };
++enum { PXL_WB_HELLO = 1, PXL_WB_RELEASE = 2, PXL_WB_PARITE = 3, PXL_WB_RING = 10, PXL_WB_FRAME = 11, PXL_WB_STATS = 12 };
 +struct pxl_wb_msg {
 +	uint32_t magic, type, slot, n, w, h, pitch, size, uvoff, fps;
 +	uint64_t t_ns, frames, skipped;
@@ -98,7 +109,56 @@ diff -ruN a/libweston/backend-drm/drm.c b/libweston/backend-drm/drm.c
 +	int paire;
 +	int rang[PXL_WB_N];
 +	uint64_t last_ns, frames, skipped;
-+} pxl = { .lfd = -1, .cfd = -1 };
++	/* PsF : trame du haut = numéro de vblank + decalage pair (appris par
++	 * l'encodeur sur l'image ; -1 inconnu) ; barrière de notre commit de
++	 * seconde trame, attendue avant le commit suivant de Weston */
++	int decalage;
++	uint64_t seq2;
++	uint64_t recales, rattrapages_rates;
++} pxl = { .lfd = -1, .cfd = -1, .decalage = -1 };
++
++bool
++pxl_psf(void)
++{
++	static int v = -1;
++	if (v < 0) {
++		const char *e = getenv("PXL_PSF");
++		v = e && e[0] == '1';
++	}
++	return v;
++}
++
++static bool
++pxl_entrelace(struct drm_output *output)
++{
++	return output->base.current_mode &&
++	       (to_drm_mode(output->base.current_mode)->mode_info.flags & DRM_MODE_FLAG_INTERLACE);
++}
++
++/* Appelée sur chaque flip, avant que Weston date l'image : si elle a commencé
++ * sur une trame du BAS, on la date d'une trame plus TARD — Weston programme
++ * alors la suivante une trame plus tard, sur une trame du haut, avec tout son
++ * temps de composition. Une seule image dure trois trames, ensuite tout est
++ * calé. ⚠ La dater plus TÔT laissait ~13 ms à Weston : il ratait la trame et
++ * retombait sur une trame du bas (mesuré 03/10 : recalage toutes les ~120 ms,
++ * flux à 21 img/s). */
++void
++pxl_psf_flip(struct drm_output *output, unsigned int frame,
++	     unsigned int *sec, unsigned int *usec)
++{
++	uint64_t trame_us, t;
++
++	if (!pxl_psf() || pxl.decalage < 0 || !pxl_entrelace(output) ||
++	    ((frame + pxl.decalage) & 1) == 0)
++		return;
++	trame_us = 1000000000ull / output->base.current_mode->refresh / 2;
++	t = (uint64_t)*sec * 1000000ull + *usec + trame_us;
++	*sec = t / 1000000ull;
++	*usec = t % 1000000ull;
++	if (pxl.recales++ < 3 || pxl.recales % 250 == 0)
++		weston_log("pxl-wb: PsF, image recalée sur la trame du haut (%llu fois)\n",
++			   (unsigned long long)pxl.recales);
++}
 +
 +static uint64_t
 +pxl_now_ns(void)
@@ -226,6 +286,9 @@ diff -ruN a/libweston/backend-drm/drm.c b/libweston/backend-drm/drm.c
 +				wl_event_source_timer_update(pxl.timer, 1000 / pxl.fps);
 +		} else if (m.type == PXL_WB_RELEASE && m.slot < PXL_WB_N) {
 +			pxl.busy[m.slot] = false;
++		} else if (m.type == PXL_WB_PARITE) {
++			pxl.decalage = m.n & 1;
++			weston_log("pxl-wb: parité des trames apprise par l'encodeur (décalage %d)\n", pxl.decalage);
 +		}
 +	}
 +	if (r == 0)
@@ -311,10 +374,27 @@ diff -ruN a/libweston/backend-drm/drm.c b/libweston/backend-drm/drm.c
 +	int h = output->base.current_mode->height;
 +	uint64_t now;
 +	int i, slot = -1;
-+	bool entrelace;
++	bool entrelace, psf;
 +
 +	if (!pxl.init)
 +		pxl_wb_init(output);
++	/* PsF : notre commit de seconde trame doit être APPLIQUÉ avant celui de
++	 * Weston (sinon EBUSY) — il l'est au début de la trame qu'il capture
++	 * (seq2), et Weston commite une trame plus tard : l'attente est nulle en
++	 * régime normal. ⚠ Attendre la FIN du writeback (sa barrière) arrive une
++	 * trame trop tard : Weston ratait sa trame et retombait sur une trame du
++	 * bas (mesuré 03/10 : recalage ~9 fois/s, flux à 16-21 img/s). */
++	if (pxl.seq2) {
++		uint64_t seq = 0, ns;
++		int i;
++		for (i = 0; i < 25; i++) {
++			if (drmCrtcGetSequence(output->device->drm.fd, output->crtc->crtc_id, &seq, &ns) ||
++			    seq >= pxl.seq2)
++				break;
++			usleep(1000);
++		}
++		pxl.seq2 = 0;
++	}
 +	if (pxl.lfd < 0 || pxl.cfd < 0 || pxl.fps <= 0 || output->wb_state)
 +		return;
 +	if (pxl.output && pxl.output != output)
@@ -324,9 +404,13 @@ diff -ruN a/libweston/backend-drm/drm.c b/libweston/backend-drm/drm.c
 +	/* -4 ms : une image d'avance tolérée sur la grille, sinon un écran à
 +	 * 50 Hz pour 25 img/s demandées raterait la moitié des rendez-vous */
 +	entrelace = !!(to_drm_mode(output->base.current_mode)->mode_info.flags & DRM_MODE_FLAG_INTERLACE);
-+	if (!entrelace)
++	psf = entrelace && pxl_psf();
++	if (!entrelace || psf)
 +		pxl.paire = 0;
-+	if (pxl.paire != 1 && now - pxl.last_ns + 4000000ull < 1000000000ull / pxl.fps)
++	/* PsF : Weston est déjà cadencé à l'image (25 Hz), on prend chaque image —
++	 * une demi-image de tolérance absorbe la gigue de commit (avec 4 ms on en
++	 * perdait 1,5/s, mesuré 03/10) */
++	if (pxl.paire != 1 && now - pxl.last_ns + (psf ? 500000000ull / pxl.fps : 4000000ull) < 1000000000ull / pxl.fps)
 +		return;
 +
 +	if (pxl.n && (pxl.w != w || pxl.h != h)) {
@@ -400,6 +484,9 @@ diff -ruN a/libweston/backend-drm/drm.c b/libweston/backend-drm/drm.c
 +	if (!entrelace) {
 +		pxl.rang[slot] = 0;
 +		pxl.last_ns = now;
++	} else if (psf) {
++		pxl.rang[slot] = 1;	/* la seconde trame : pxl_wb_rattrapage() */
++		pxl.last_ns = now;
 +	} else if (pxl.paire == 1) {
 +		pxl.rang[slot] = 2;
 +		pxl.paire = 0;
@@ -408,6 +495,58 @@ diff -ruN a/libweston/backend-drm/drm.c b/libweston/backend-drm/drm.c
 +		pxl.paire = 1;
 +		pxl.last_ns = now;
 +	}
++}
++
++/* PsF : capture de la SECONDE trame de l'image, par un commit qui ne porte
++ * que le writeback (le CRTC y figure seulement pour que le noyau accepte le
++ * travail de writeback). Rien n'est recomposé : Chromium ne voit rien. */
++static void
++pxl_wb_rattrapage(struct drm_output *output, struct drm_writeback *wb, uint64_t seq)
++{
++	int fd = output->device->drm.fd, slot = -1, fence = -1, i;
++	drmModeAtomicReq *req;
++	int ret;
++
++	for (i = 0; i < pxl.n && slot < 0; i++)
++		if (!pxl.busy[i])
++			slot = i;
++	if (slot < 0) {
++		pxl.skipped++;
++		return;
++	}
++	req = drmModeAtomicAlloc();
++	if (!req)
++		return;
++	ret = drmModeAtomicAddProperty(req, wb->connector.connector_id,
++				       wb->connector.props[WDRM_CONNECTOR_WRITEBACK_FB_ID].prop_id,
++				       pxl.fb[slot]->fb_id) <= 0;
++	ret |= drmModeAtomicAddProperty(req, wb->connector.connector_id,
++					wb->connector.props[WDRM_CONNECTOR_WRITEBACK_OUT_FENCE_PTR].prop_id,
++					(uintptr_t)&fence) <= 0;
++	ret |= drmModeAtomicAddProperty(req, output->crtc->crtc_id,
++					output->crtc->props_crtc[WDRM_CRTC_ACTIVE].prop_id, 1) <= 0;
++	if (!ret)
++		ret = drmModeAtomicCommit(fd, req, DRM_MODE_ATOMIC_NONBLOCK, NULL);
++	drmModeAtomicFree(req);
++	if (ret) {
++		if (pxl.rattrapages_rates++ < 5)
++			weston_log("pxl-wb: PsF, capture de la 2e trame refusée : %s\n", strerror(errno));
++		if (fence >= 0)
++			close(fence);
++		return;
++	}
++	pxl.busy[slot] = true;
++	pxl.rang[slot] = 2;
++	{
++		struct pxl_wb_msg m = { .magic = PXL_WB_MAGIC, .type = PXL_WB_FRAME, .slot = slot,
++					.n = 2, .t_ns = pxl_now_ns(), .frames = ++pxl.frames,
++					.skipped = pxl.skipped, .seq = seq + 1 };
++		if (pxl_send(&m, fence >= 0 ? &fence : NULL, fence >= 0 ? 1 : 0))
++			pxl.busy[slot] = false;
++	}
++	if (fence >= 0)
++		close(fence);	/* l'encodeur a la sienne */
++	pxl.seq2 = seq + 1;	/* trame où notre commit s'applique */
 +}
 +
 +/* Le commit est parti : la case et sa barrière passent à l'encodeur. */
@@ -429,10 +568,15 @@ diff -ruN a/libweston/backend-drm/drm.c b/libweston/backend-drm/drm.c
 +		drmCrtcGetSequence(output->device->drm.fd, output->crtc->crtc_id, &m.seq, &ns);
 +		if (pxl_send(&m, fd >= 0 ? &fd : NULL, fd >= 0 ? 1 : 0))
 +			pxl.busy[slot] = false;
-+		/* première trame d'une paire : recomposer tout de suite, pour que la
-+		 * seconde capture tombe sur la trame SUIVANTE */
-+		if (pxl.rang[slot] == 1)
-+			weston_output_schedule_repaint(&output->base);
++		/* première trame d'une paire : la seconde doit tomber sur la trame
++		 * SUIVANTE — en PsF par notre propre commit (la même image), sinon
++		 * en recomposant tout de suite (50i : ce peut être une autre image) */
++		if (pxl.rang[slot] == 1) {
++			if (pxl_psf())
++				pxl_wb_rattrapage(output, state->wb, m.seq);
++			else
++				weston_output_schedule_repaint(&output->base);
++		}
 +	} else {
 +		pxl.busy[slot] = false;
 +		pxl.attached = false;	/* commit refusé : on ré-attachera */
@@ -445,7 +589,7 @@ diff -ruN a/libweston/backend-drm/drm.c b/libweston/backend-drm/drm.c
  static void
  drm_output_pick_writeback_capture_task(struct drm_output *output)
  {
-@@ -715,8 +1111,10 @@
+@@ -715,8 +1250,10 @@
  	if (drm_output_ensure_hdr_output_metadata_blob(output) < 0)
  		goto err;
  
@@ -457,7 +601,7 @@ diff -ruN a/libweston/backend-drm/drm.c b/libweston/backend-drm/drm.c
  
  	drm_output_render(state, damage);
  	scanout_state = drm_output_state_get_plane(state,
-@@ -2816,6 +3214,10 @@
+@@ -2816,6 +3353,10 @@
  {
  	struct drm_output *output = state->output;
  
@@ -468,7 +612,7 @@ diff -ruN a/libweston/backend-drm/drm.c b/libweston/backend-drm/drm.c
  	weston_capture_task_retire_failed(state->ct, err_msg);
  	drm_writeback_state_free(state);
  	output->wb_state = NULL;
-@@ -2868,6 +3270,14 @@
+@@ -2868,6 +3409,14 @@
  	if (state->state == DRM_OUTPUT_WB_SCREENSHOT_WAITING_SIGNAL)
  		return true;
  
@@ -485,7 +629,7 @@ diff -ruN a/libweston/backend-drm/drm.c b/libweston/backend-drm/drm.c
  			return false;
 diff -ruN a/libweston/backend-drm/kms.c b/libweston/backend-drm/kms.c
 --- a/libweston/backend-drm/kms.c	2026-10-03 09:15:12.909478813 +0000
-+++ b/libweston/backend-drm/kms.c	2026-10-03 09:15:12.916781596 +0000
++++ b/libweston/backend-drm/kms.c	2026-10-03 09:46:17.182315863 +0000
 @@ -1169,7 +1169,10 @@
  		*flags |= DRM_MODE_ATOMIC_ALLOW_MODESET;
  	}
@@ -523,3 +667,26 @@ diff -ruN a/libweston/backend-drm/kms.c b/libweston/backend-drm/kms.c
  		}
  	} else {
  		ret |= crtc_add_prop(req, crtc, WDRM_CRTC_MODE_ID, 0);
+@@ -1747,6 +1753,7 @@
+ 	assert(output->atomic_complete_pending);
+ 	output->atomic_complete_pending = false;
+ 
++	pxl_psf_flip(output, frame, &sec, &usec);	/* PXL : caler les images sur la trame du haut */
+ 	drm_output_update_complete(output, flags, sec, usec);
+ 	drm_debug(b, "[atomic][CRTC:%u] flip processing completed\n", crtc_id);
+ }
+diff -ruN a/libweston/backend-drm/modes.c b/libweston/backend-drm/modes.c
+--- a/libweston/backend-drm/modes.c	2026-10-03 09:15:12.909412165 +0000
++++ b/libweston/backend-drm/modes.c	2026-10-03 09:46:17.181877518 +0000
+@@ -438,7 +438,10 @@
+ 	refresh = (info->clock * 1000000LL / info->htotal +
+ 		   info->vtotal / 2) / info->vtotal;
+ 
+-	if (info->flags & DRM_MODE_FLAG_INTERLACE)
++	/* PXL : en PsF (PXL_PSF=1), un mode entrelacé se cadence à l'IMAGE
++	 * (25 Hz en 1080i50), pas à la trame : Chromium suit, et chaque image
++	 * occupe ses deux trames — voir pxl_psf() dans drm.c */
++	if ((info->flags & DRM_MODE_FLAG_INTERLACE) && !pxl_psf())
+ 		refresh *= 2;
+ 	if (info->flags & DRM_MODE_FLAG_DBLSCAN)
+ 		refresh /= 2;

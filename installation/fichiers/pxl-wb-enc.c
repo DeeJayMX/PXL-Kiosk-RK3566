@@ -20,6 +20,8 @@
 //    peigne le texte). Le décalage est appris, puis re-vérifié chaque seconde ; trois désaccords francs le basculent.
 //    ⚠ Une paire ne commence pas toujours sur la même trame (une recomposition ratée la décale) : on ne fige donc
 //    JAMAIS « la première de la paire va en haut ».
+//  - en PsF (réglage « 25p propre »), les deux trames d'une paire sont la MÊME image : la parité apprise est
+//    renvoyée à Weston (message PARITE), qui cale alors chaque image sur la trame du haut.
 #include <errno.h>
 #include <linux/dma-buf.h>
 #include <poll.h>
@@ -40,7 +42,7 @@
 
 #define PXL_WB_N 6
 #define PXL_WB_MAGIC 0x57584c50u
-enum { PXL_WB_HELLO = 1, PXL_WB_RELEASE = 2, PXL_WB_RING = 10, PXL_WB_FRAME = 11 };
+enum { PXL_WB_HELLO = 1, PXL_WB_RELEASE = 2, PXL_WB_PARITE = 3, PXL_WB_RING = 10, PXL_WB_FRAME = 11 };
 struct pxl_wb_msg {   // identique à drm.c (patch)
 	uint32_t magic, type, slot, n, w, h, pitch, size, uvoff, fps;
 	uint64_t t_ns, frames, skipped;
@@ -216,6 +218,12 @@ static ssize_t recevoir(struct pxl_wb_msg *m, int *fds, int *nfds) {
 	return r;
 }
 
+// La parité apprise repart vers Weston : en PsF il cale les images sur la trame du haut (pxl_psf_flip).
+static void annoncer_parite(int decalage) {
+	struct pxl_wb_msg p = { .magic = PXL_WB_MAGIC, .type = PXL_WB_PARITE, .n = (uint32_t)decalage };
+	send(sfd, &p, sizeof p, MSG_NOSIGNAL);
+}
+
 static void rendre(uint32_t slot) {
 	struct pxl_wb_msg rel = { .magic = PXL_WB_MAGIC, .type = PXL_WB_RELEASE, .slot = slot };
 	send(sfd, &rel, sizeof rel, MSG_NOSIGNAL);
@@ -258,6 +266,7 @@ int main(int argc, char **argv) {
 		}
 		if (m.type == PXL_WB_RING) {
 			enc_fermer(); tenue = -1;
+			if (decalage >= 0) annoncer_parite(decalage);   // un Weston relancé l'a oubliée
 			ring_n = nfds < (int)m.n ? nfds : (int)m.n;
 			for (int i = 0; i < ring_n; i++) ring_fd[i] = fds[i];
 			if (enc_ouvrir(&m)) return 1;
@@ -291,9 +300,9 @@ int main(int argc, char **argv) {
 				if (j < 0) indecis++;
 				else {
 					const int dec = (int)((tenue_seq + (j == 0 ? 0 : 1)) & 1);   // tel que (seq_haut + dec) soit pair
-					if (decalage < 0) { decalage = dec; fprintf(stderr, "pxl-wb-enc : ordre des trames appris sur l'image (décalage %d)\n", dec); }
+					if (decalage < 0) { decalage = dec; annoncer_parite(dec); fprintf(stderr, "pxl-wb-enc : ordre des trames appris sur l'image (décalage %d)\n", dec); }
 					else if (dec != decalage) {
-						if (++desaccords >= 3) { decalage = dec; desaccords = 0; bascules++; fprintf(stderr, "pxl-wb-enc : ordre des trames rebasculé par l'image\n"); }
+						if (++desaccords >= 3) { decalage = dec; desaccords = 0; bascules++; annoncer_parite(dec); fprintf(stderr, "pxl-wb-enc : ordre des trames rebasculé par l'image\n"); }
 					} else { desaccords = 0; accords++; }
 				}
 			}

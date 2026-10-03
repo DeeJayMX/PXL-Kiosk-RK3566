@@ -29,6 +29,9 @@ PREVIEW_URL=http://127.0.0.1:8765/ecran
 # 720p par défaut depuis le 02/10 : 2,25× moins de pixels à dessiner pour Chromium (réglable dans /admin).
 SORTIE_NOM=HDMI-A-1
 SORTIE_MODE=1280x720@25
+# En entrelacé (1920x1080i@50) : 50i = une image par trame (fluide) ; psf = une image pour deux trames, 25 img/s,
+# écran et flux TurboHQ propres en mouvement (Weston patché requis). Réglable dans /admin.
+ENTRELACE=50i
 
 # --- Santé -------------------------------------------------------------------------------------
 # Petit serveur JSON (température, charge, services, santé du serveur d'habillage)

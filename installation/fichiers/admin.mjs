@@ -208,13 +208,20 @@ async function regleMode(q) {
 const CONF = '/etc/pxl-kiosk.conf', WESTON_INI = '/etc/pxl-kiosk/weston.ini';
 // « i » = entrelacé : Weston ne sait pas le choisir, pxl-mode le pose avant lui (preview.sh) et weston.ini dit « current »
 const MODES_HDMI = ['1280x720@25', '1280x720@50', '1920x1080@25', '1920x1080@50', '1920x1080i@50'];
-const ecran = () => ({ mode: lireConf().SORTIE_MODE || null, modes: MODES_HDMI });
+// En entrelacé : « 50i » (Weston à la trame, mouvement fluide à l'écran) ou « psf » (Weston à l'IMAGE, 25 img/s : chaque
+// image tient ses deux trames, donc écran ET flux writeback propres en mouvement — preview.sh pose PXL_PSF=1).
+const ENTRELACES = ['50i', 'psf'];
+const ecran = () => { const c = lireConf();
+  return { mode: c.SORTIE_MODE || null, modes: MODES_HDMI, entrelace: ENTRELACES.includes(c.ENTRELACE) ? c.ENTRELACE : '50i', entrelaces: ENTRELACES }; };
 const poserLigne = (texte, cle, valeur) => { const re = new RegExp(`^\\s*${cle}=.*$`, 'm'), l = `${cle}=${valeur}`;
   return re.test(texte) ? texte.replace(re, l) : texte.replace(/\n?$/, '\n') + l + '\n'; };
 const ecrireAtomique = (f, t) => { writeFileSync(f + '.part', t); renameSync(f + '.part', f); };
 async function regleEcran(q) {
   exiger(MODES_HDMI.includes(q.mode), 'mode HDMI inconnu');
-  ecrireAtomique(CONF, poserLigne(readFileSync(CONF, 'utf8'), 'SORTIE_MODE', q.mode));
+  exiger(q.entrelace === undefined || ENTRELACES.includes(q.entrelace), 'cadence d\'entrelacé inconnue');
+  let conf = poserLigne(readFileSync(CONF, 'utf8'), 'SORTIE_MODE', q.mode);
+  if (q.entrelace !== undefined) conf = poserLigne(conf, 'ENTRELACE', q.entrelace);
+  ecrireAtomique(CONF, conf);
   if (existsSync(WESTON_INI)) ecrireAtomique(WESTON_INI, poserLigne(readFileSync(WESTON_INI, 'utf8'), 'mode', q.mode.includes('i@') ? 'current' : q.mode));
   const r = await run('systemctl', ['restart', 'pxl-preview']); exiger(r.ok, r.err);
   return {};

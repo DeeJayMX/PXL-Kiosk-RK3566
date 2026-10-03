@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Administration de la box</title>
 <style>
+  [hidden] { display: none !important; }
   :root { --fond: #0f1216; --carte: #171b21; --trait: #2a313a; --texte: #e8ecf1; --doux: #8b95a1; --accent: #4aa8ff;
     --vert: #3ddc97; --rouge: #ff5d6c; --orange: #f5b14c; --rayon: 10px; }
   * { box-sizing: border-box; }
@@ -137,11 +138,16 @@
     <form id="f-ecran">
       <div class="ligne">
         <div><label for="ecran-mode">Résolution de la sortie</label><select id="ecran-mode"></select></div>
+        <div id="bloc-entrelace"><label for="ecran-entrelace">Cadence en entrelacé</label><select id="ecran-entrelace">
+          <option value="50i">50i — fluide</option><option value="psf">25p (PsF) — propre</option></select></div>
       </div>
       <div class="actions"><button class="principal" type="submit">Appliquer — relance l'écran</button></div>
     </form>
     <p class="note">Seul l'écran HDMI de la box se relance (quelques secondes de noir) ; le serveur et l'antenne ne sont
-      pas touchés. 720p : moins de travail pour la box. La TV doit accepter le mode choisi. Ce qui s'affiche (Preview,
+      pas touchés. 720p : moins de travail pour la box. La TV doit accepter le mode choisi. En 1080i :
+      <b>50i</b> = une image par trame, mouvement fluide à l'écran mais le flux TurboHQ « peigne » ce qui bouge ;
+      <b>25p (PsF)</b> = une image pour deux trames (25 img/s), écran et flux propres même en mouvement, et deux fois
+      moins de travail pour Chromium. Ce qui s'affiche (Preview,
       Multiview) se choisit dans la console de l'habillage, ⚙ Réglages.</p>
   </section>
 
@@ -331,7 +337,9 @@ function rendre() {
     $('#ecran-mode').innerHTML = ec.modes.map(m => `<option value="${m}">${m.replace('1280x720', '720p').replace('1920x1080i', '1080i').replace('1920x1080', '1080p').replace('@', ' · ')} Hz</option>`).join('')
       + (ec.modes.includes(ec.mode) ? '' : `<option value="" disabled>${esc(ec.mode || '?')}</option>`);
     $('#ecran-mode').value = ec.modes.includes(ec.mode) ? ec.mode : '';
+    $('#ecran-entrelace').value = ec.entrelace || '50i';
   }
+  $('#bloc-entrelace').hidden = !($('#ecran-mode').value || '').includes('i@');
   // Flux TurboHQ
   const w = E.wb;
   if (w) {
@@ -507,10 +515,11 @@ $('#b-reboot').addEventListener('click', ev => confirm('Redémarrer la box ? Env
   && action(ev.target, () => appel('/api/redemarrer', {}), 'redémarrage en cours — recharge la page dans une minute'));
 $('#b-eteindre').addEventListener('click', ev => confirm('Éteindre la box ? Plus d\'habillage jusqu\'à ce qu\'on débranche et rebranche l\'alimentation.')
   && action(ev.target, () => appel('/api/eteindre', {}), 'extinction en cours — quand la façade s\'éteint, on peut débrancher'));
-$('#f-ecran').addEventListener('input', () => { $('#f-ecran').dataset.touche = 1; });
+$('#f-ecran').addEventListener('input', () => { $('#f-ecran').dataset.touche = 1;
+  $('#bloc-entrelace').hidden = !($('#ecran-mode').value || '').includes('i@'); });
 $('#f-ecran').addEventListener('submit', ev => {
   ev.preventDefault();
-  action(ev.submitter, async () => { await appel('/api/ecran', { mode: $('#ecran-mode').value });
+  action(ev.submitter, async () => { await appel('/api/ecran', { mode: $('#ecran-mode').value, entrelace: $('#ecran-entrelace').value });
     delete $('#f-ecran').dataset.touche; }, 'écran relancé');
 });
 $('#f-wb').addEventListener('input', () => { $('#f-wb').dataset.touche = 1; });
