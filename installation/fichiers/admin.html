@@ -170,8 +170,9 @@
         <div><label>Relais de destination <span class="aide" tabindex="0">❔<span class="aide-texte"><b>Local</b> : le
           relais de cette box (<code>ws://127.0.0.1:8080</code>), regardé sur <code>http://&lt;box&gt;:8080</code>.<br>
           <b>Personnalisé</b> : le relais d'une autre machine, <code>ws://&lt;adresse&gt;:8080</code>. « Chercher » ne voit
-          que le réseau local, et pas sur un Wi-Fi qui bloque les annonces ni à travers le tailnet (100.x) : saisir
-          l'adresse.</span></span></label>
+          le réseau local par annonce — un Wi-Fi qui ne les relaie pas ou le tailnet (100.x) les bloquent —, mais elle
+          interroge aussi <b>directement</b> les relais déjà choisis ici (les 8 derniers) : saisis une fois, on les
+          retrouve partout.</span></span></label>
           <div class="choix">
             <label><input type="radio" name="wb-dest" value="local" style="width:auto"> Local</label>
             <label><input type="radio" name="wb-dest" value="perso" style="width:auto"> Personnalisé</label>

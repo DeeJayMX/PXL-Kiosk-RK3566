@@ -275,6 +275,13 @@ async function regleWb(q) {
   for (const [k, v] of [['WB_ACTIF', actif ? 1 : 0], ['WB_URL', `"${url}"`], ['WB_CANAL', canal], ['WB_FPS', fps], ['WB_DEBIT', debit],
     ['WB_CODEC', codec], ['WB_RC', rc], ['WB_GOP', Math.max(1, Math.round(fps * gopS))]])
     t = poserLigne(t, k, v);
+  // Les relais choisis à la main sont retenus (8 au plus) : la recherche les interroge DIRECTEMENT — un Wi-Fi qui ne
+  // relaie pas les annonces entre clients (mesuré le 03/10 sur « PXL ») ou le tailnet n'empêchent pas une question directe.
+  const hote = (() => { try { return new URL(url).hostname; } catch { return ''; } })();
+  if (hote && !['127.0.0.1', 'localhost'].includes(hote)) {
+    const connus = [hote, ...relaisConnus().filter(h => h !== hote)].slice(0, 8);
+    t = poserLigne(t, 'WB_RELAIS_CONNUS', `"${connus.join(' ')}"`);
+  }
   ecrireAtomique(CONF, t);
   if (q.cleEffacer === '1') { try { unlinkSync(WB_CLE); } catch { /* déjà absente */ } }
   else if (q.cle) {
@@ -328,11 +335,12 @@ async function regleRelais(q) {
 // Les relais visibles sur le réseau local : la sonde « TURBOHQ? » de leur découverte (UDP 41808, discovery.mjs du dépôt
 // TurboHQ), en diffusion sur chaque interface + la boucle locale. ⚠ Rien ne traverse un routeur ni le tailnet : un relais
 // en 100.x ne répond jamais ici — la saisie manuelle de l'adresse reste le chemin qui marche toujours.
+const relaisConnus = () => liste(lireConf().WB_RELAIS_CONNUS).filter(h => estIp(h) || estHote(h)).slice(0, 8);
 function decouvrir() {
   return new Promise(res => {
     const s = dgram.createSocket('udp4'), vus = new Map();
     const miennes = new Set(['127.0.0.1']);
-    const cibles = new Set(['255.255.255.255', '127.0.0.1']);
+    const cibles = new Set(['255.255.255.255', '127.0.0.1', ...relaisConnus()]);
     for (const l of Object.values(networkInterfaces())) for (const n of l || []) {
       if (n.family !== 'IPv4' || n.internal || !n.netmask) continue;
       miennes.add(n.address);
@@ -348,7 +356,7 @@ function decouvrir() {
     } catch { /* paquet étranger */ } });
     s.on('error', () => {});
     s.bind(0, () => { s.setBroadcast(true); const p = Buffer.from('TURBOHQ?');
-      for (const a of cibles) s.send(p, 41808, a, () => {}); });
+      for (const a of cibles) s.send(p, 41808, a, () => { /* hôte injoignable ou nom inconnu : il ne répondra pas */ }); });
     setTimeout(() => { try { s.close(); } catch { /* déjà fermée */ } res([...vus.values()]); }, 1200);
   });
 }

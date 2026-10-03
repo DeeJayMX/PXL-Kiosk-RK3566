@@ -166,3 +166,13 @@ Sur la page : « Relais de destination » **Local / Personnalisé** (l'adresse, 
 qu'en Personnalisé), et toutes les explications sont passées derrière des **❔** dont la bulle suit la souris (au doigt :
 un appui l'ouvre). Vérifié dans Chromium avec l'état réel de la box : aucune erreur, la bulle s'ouvre et se ferme,
 l'envoi porte codec, mode et GOP.
+
+## Recherche des relais : la question directe (ajout du 03/10/2026, v1.11.1)
+
+**Mesuré** : sur le Wi-Fi « PXL » du labo, la borne ne relaie pas la diffusion entre clients — la TurboNode (en écoute
+sur 41808) ne reçoit rien de la PXLnode, alors qu'une sonde **adressée** à 192.168.1.155 reçoit sa réponse. La recherche
+de /admin interroge donc aussi **directement** les relais déjà choisis en « Personnalisé » (`WB_RELAIS_CONNUS`, les 8
+derniers). Mesuré ensuite : la recherche rend PXLnode (local) **et** turbonode (192.168.1.155, avec ses canaux).
+
+Même jour : relais de la TurboNode passé à `master` 1dac63d (il lui manquait la garde « une socket en erreur ne tue pas
+le relais ») ; clé, fédération `pxl-tx` et annonce repris au redémarrage, présentateur revenu à 60 img/s.
