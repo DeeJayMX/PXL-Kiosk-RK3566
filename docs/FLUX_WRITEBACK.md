@@ -153,3 +153,16 @@ réaffichée), passée au publisher par l'environnement (`THQ_KEY`), jamais sur 
 **/admin** : *Flux TurboHQ* (destination, « Relais de la box », recherche des relais du réseau local par la sonde UDP
 41808 — ⚠️ elle ne traverse ni un routeur ni le tailnet —, clé) et *Relais TurboHQ de la box* (en service, nom annoncé,
 clé optionnelle, canaux en cours avec leur source et leurs spectateurs).
+
+## Codec, GOP, mode de débit — et l'admin en bulles (ajout du 03/10/2026, v1.11.0)
+
+`pxl-wb-enc` prend `--codec h264|hevc`, `--gop <images>`, `--rc cbr|vbr` (réglés dans /admin : `WB_CODEC`, `WB_GOP` —
+rangé en images, choisi en secondes —, `WB_RC`) ; `pxl-wb.sh` passe `--hevc` à `thq-publish`. **Mesuré** en 1080i PsF,
+H.265 VBR GOP 50 : flux `hvc1.1.6.L120.80`, Main, 1920×1080, relu par `thq-record` + ffprobe, **une image clé toutes
+les 50 images exactement** (n° 1, 51, 101, 151, 201). ⚠️ Non mesuré : le gain de débit du H.265 sur ce contenu, et quels
+navigateurs des spectateurs le décodent.
+
+Sur la page : « Relais de destination » **Local / Personnalisé** (l'adresse, la clé et la recherche n'apparaissent
+qu'en Personnalisé), et toutes les explications sont passées derrière des **❔** dont la bulle suit la souris (au doigt :
+un appui l'ouvre). Vérifié dans Chromium avec l'état réel de la box : aucune erreur, la bulle s'ouvre et se ferme,
+l'envoi porte codec, mode et GOP.

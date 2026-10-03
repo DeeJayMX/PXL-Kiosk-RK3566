@@ -6,6 +6,16 @@
 <title>Administration de la box</title>
 <style>
   [hidden] { display: none !important; }
+  /* Les explications : un ❔ ; la bulle suit la souris (au doigt : un appui l'ouvre, un autre la ferme) */
+  .aide { cursor: help; font-size: .8em; margin-left: .35em; opacity: .7; user-select: none; font-weight: normal; }
+  .aide:hover, .aide:focus { opacity: 1; outline: none; }
+  .aide-texte { display: none; }
+  #bulle { position: fixed; z-index: 1000; max-width: 380px; padding: 9px 12px; border-radius: 8px; font-size: 13.5px;
+    line-height: 1.45; font-weight: normal; background: #1d2633; color: #e6edf3; border: 1px solid #3a4658;
+    box-shadow: 0 6px 24px rgba(0,0,0,.45); pointer-events: none; display: none; }
+  #bulle code { font-size: 12.5px; }
+  .choix { display: flex; gap: 18px; align-items: center; min-height: 42px; }
+  .choix label { display: flex; gap: 6px; align-items: center; margin: 0; }
   :root { --fond: #0f1216; --carte: #171b21; --trait: #2a313a; --texte: #e8ecf1; --doux: #8b95a1; --accent: #4aa8ff;
     --vert: #3ddc97; --rouge: #ff5d6c; --orange: #f5b14c; --rayon: 10px; }
   * { box-sizing: border-box; }
@@ -113,7 +123,8 @@
   </section>
 
   <section data-onglet="habillage">
-    <h2>Mode du serveur d'habillage</h2>
+    <h2>Mode du serveur d'habillage <span class="aide" tabindex="0">❔<span class="aide-texte">Démo et Répétition ont leurs propres réglages : ceux de la course ne sont pas touchés. Au redémarrage
+      de la box, le mode revient <b>toujours</b> sur Course.</span></span></h2>
     <form id="f-mode">
       <div class="ligne">
         <div><label for="mode-choix">Mode</label>
@@ -129,12 +140,15 @@
       </div>
       <div class="actions"><button class="principal" type="submit">Appliquer — relance le serveur</button></div>
     </form>
-    <p class="note">Démo et Répétition ont leurs propres réglages : ceux de la course ne sont pas touchés. Au redémarrage
-      de la box, le mode revient <b>toujours</b> sur Course.</p>
   </section>
 
   <section data-onglet="habillage">
-    <h2>Sortie HDMI</h2>
+    <h2>Sortie HDMI <span class="aide" tabindex="0">❔<span class="aide-texte">Seul l'écran HDMI de la box se relance (quelques secondes de noir) ; le serveur et l'antenne ne sont
+      pas touchés. 720p : moins de travail pour la box. La TV doit accepter le mode choisi. En 1080i :
+      <b>50i</b> = une image par trame, mouvement fluide à l'écran mais le flux TurboHQ « peigne » ce qui bouge ;
+      <b>25p (PsF)</b> = une image pour deux trames (25 img/s), écran et flux propres même en mouvement, et deux fois
+      moins de travail pour Chromium. Ce qui s'affiche (Preview,
+      Multiview) se choisit dans la console de l'habillage, ⚙ Réglages.</span></span></h2>
     <form id="f-ecran">
       <div class="ligne">
         <div><label for="ecran-mode">Résolution de la sortie</label><select id="ecran-mode"></select></div>
@@ -143,69 +157,84 @@
       </div>
       <div class="actions"><button class="principal" type="submit">Appliquer — relance l'écran</button></div>
     </form>
-    <p class="note">Seul l'écran HDMI de la box se relance (quelques secondes de noir) ; le serveur et l'antenne ne sont
-      pas touchés. 720p : moins de travail pour la box. La TV doit accepter le mode choisi. En 1080i :
-      <b>50i</b> = une image par trame, mouvement fluide à l'écran mais le flux TurboHQ « peigne » ce qui bouge ;
-      <b>25p (PsF)</b> = une image pour deux trames (25 img/s), écran et flux propres même en mouvement, et deux fois
-      moins de travail pour Chromium. Ce qui s'affiche (Preview,
-      Multiview) se choisit dans la console de l'habillage, ⚙ Réglages.</p>
   </section>
 
   <section data-onglet="habillage">
-    <h2>Flux TurboHQ de la sortie HDMI</h2>
+    <h2>Flux TurboHQ de la sortie HDMI <span class="aide" tabindex="0">❔<span class="aide-texte">Sans copie : le VOP2
+      écrit l'image du HDMI, l'encodeur matériel la lit telle quelle. N'affecte ni l'écran ni l'antenne.</span></span></h2>
     <form id="f-wb">
       <label><input type="checkbox" id="wb-actif" style="width:auto"> Publier ce que la box affiche sur le HDMI</label>
       <div class="ligne">
-        <div><label for="wb-url">Relais TurboHQ (destination)</label><input id="wb-url" placeholder="ws://127.0.0.1:8080"></div>
-        <div><label for="wb-canal">Canal</label><input id="wb-canal" placeholder="pxlnode"></div>
+        <div><label for="wb-canal">Nom du canal <span class="aide" tabindex="0">❔<span class="aide-texte">Le nom sous lequel
+          le flux apparaît sur le relais : les spectateurs le choisissent par ce nom.</span></span></label><input id="wb-canal" placeholder="SyntPVW"></div>
+        <div><label>Relais de destination <span class="aide" tabindex="0">❔<span class="aide-texte"><b>Local</b> : le
+          relais de cette box (<code>ws://127.0.0.1:8080</code>), regardé sur <code>http://&lt;box&gt;:8080</code>.<br>
+          <b>Personnalisé</b> : le relais d'une autre machine, <code>ws://&lt;adresse&gt;:8080</code>. « Chercher » ne voit
+          que le réseau local, et pas sur un Wi-Fi qui bloque les annonces ni à travers le tailnet (100.x) : saisir
+          l'adresse.</span></span></label>
+          <div class="choix">
+            <label><input type="radio" name="wb-dest" value="local" style="width:auto"> Local</label>
+            <label><input type="radio" name="wb-dest" value="perso" style="width:auto"> Personnalisé</label>
+          </div></div>
       </div>
-      <div class="actions" style="justify-content:flex-start">
-        <button type="button" id="wb-local">Relais de la box</button>
-        <button type="button" id="wb-chercher">Chercher les relais du réseau</button>
+      <div class="ligne" id="wb-perso">
+        <div><label for="wb-url">Adresse du relais</label><input id="wb-url" placeholder="ws://192.168.1.155:8080"></div>
+        <div><label for="wb-cle">Clé d'accès <span class="aide" tabindex="0">❔<span class="aide-texte">Seulement si ce
+          relais en exige une. Jamais réaffichée : laisser vide pour garder celle qui est enregistrée.</span></span></label>
+          <input id="wb-cle" type="password" autocomplete="new-password">
+          <label><input type="checkbox" id="wb-cle-effacer" style="width:auto"> retirer la clé</label></div>
       </div>
+      <div class="actions" id="wb-chercher-l" style="justify-content:flex-start"><button type="button" id="wb-chercher">Chercher les relais du réseau</button></div>
       <div id="wb-trouves" class="table"></div>
       <div class="ligne">
-        <div><label for="wb-cle">Clé d'accès du relais (s'il en exige une)</label><input id="wb-cle" type="password" autocomplete="new-password"></div>
-        <div><label><input type="checkbox" id="wb-cle-effacer" style="width:auto"> retirer la clé</label></div>
+        <div><label for="wb-codec">Codec <span class="aide" tabindex="0">❔<span class="aide-texte"><b>H.264</b> : lu
+          partout. <b>H.265</b> : à qualité égale, ≈ 30 à 40 % de débit en moins, mais le spectateur doit savoir le décoder
+          (navigateur récent avec décodage matériel, TurboNode oui).</span></span></label><select id="wb-codec"></select></div>
+        <div><label for="wb-fps">Cadence</label><select id="wb-fps"></select></div>
       </div>
       <div class="ligne">
-        <div><label for="wb-fps">Cadence</label><select id="wb-fps"></select></div>
         <div><label for="wb-debit">Débit (kbit/s)</label><input id="wb-debit" type="number" min="500" max="20000" step="500"></div>
+        <div><label for="wb-rc">Mode de débit <span class="aide" tabindex="0">❔<span class="aide-texte"><b>CBR</b> : débit
+          constant, ±6 % — ce qu'un lien réseau tendu préfère. <b>VBR</b> : la moyenne visée, pointes jusqu'à ×1,5 — une
+          image fixe ne coûte presque rien, un changement de plan prend ce qu'il lui faut.</span></span></label><select id="wb-rc"></select></div>
+      </div>
+      <div class="ligne">
+        <div><label for="wb-gop">GOP (image clé toutes les…) <span class="aide" tabindex="0">❔<span class="aide-texte">Un
+          spectateur qui arrive attend au pire un GOP avant de voir l'image. Plus long : moins de débit perdu en images
+          clés, mais une arrivée plus lente et une reprise plus lente après une perte.</span></span></label><select id="wb-gop"></select></div>
+        <div></div>
       </div>
       <div class="actions"><button class="principal" type="submit">Appliquer</button></div>
     </form>
     <div id="wb-etat" class="note"></div>
-    <p class="note">Sans copie : le VOP2 écrit l'image du HDMI, l'encodeur matériel la lit telle quelle. N'affecte ni
-      l'écran ni l'antenne. Relais de la box : <code>ws://127.0.0.1:8080</code>, à regarder sur
-      <code>http://&lt;box&gt;:8080/turbohq_viewer.html?ch=&lt;canal&gt;</code>. Relais d'une autre machine : son adresse
-      (<code>ws://&lt;ip&gt;:8080</code>) — la recherche ne voit que le réseau local ; à travers le tailnet (100.x), la
-      saisir à la main. La clé n'est jamais réaffichée : laisser le champ vide la garde.</p>
   </section>
 
   <section data-onglet="habillage">
-    <h2>Relais TurboHQ de la box</h2>
+    <h2>Relais TurboHQ local <span class="aide" tabindex="0">❔<span class="aide-texte">Le relais de cette box : il
+      reçoit les flux (celui de la box, ou d'autres publishers) et les sert aux spectateurs. Avec une clé, publishers
+      <b>et</b> spectateurs doivent la donner (<code>?key=</code>) — y compris le flux de la box s'il vise ce relais.
+      Relancer le relais coupe les flux quelques secondes.</span></span></h2>
     <form id="f-relais">
       <label><input type="checkbox" id="rel-actif" style="width:auto"> Relais en service (port 8080, annoncé sur le réseau)</label>
       <div class="ligne">
-        <div><label for="rel-nom">Nom annoncé</label><input id="rel-nom" placeholder="PXLnode"></div>
-        <div><label for="rel-cle">Clé d'accès (optionnelle)</label><input id="rel-cle" type="password" autocomplete="new-password"></div>
+        <div><label for="rel-nom">Nom annoncé <span class="aide" tabindex="0">❔<span class="aide-texte">Le nom sous
+          lequel ce relais apparaît dans la recherche des autres machines du réseau local.</span></span></label><input id="rel-nom" placeholder="PXLnode"></div>
+        <div><label for="rel-cle">Clé d'accès (optionnelle) <span class="aide" tabindex="0">❔<span class="aide-texte">Sans
+          clé, le relais est ouvert : suffisant sur un réseau local ou le tailnet. Une clé s'impose dès qu'il est exposé
+          sur Internet. Jamais réaffichée : laisser vide pour la garder.</span></span></label><input id="rel-cle" type="password" autocomplete="new-password"></div>
       </div>
       <label><input type="checkbox" id="rel-cle-effacer" style="width:auto"> retirer la clé (relais ouvert)</label>
       <div class="actions"><button class="principal" type="submit">Appliquer — relance le relais</button></div>
     </form>
     <div id="rel-etat" class="note"></div>
     <div class="table"><table id="rel-t" class="cache"><thead><tr><th>Canal</th><th>Source</th><th>Spectateurs</th><th></th></tr></thead><tbody id="rel-canaux"></tbody></table></div>
-    <p class="note">Le relais reçoit les flux (celui de la box, ou d'autres publishers) et les sert aux spectateurs. Avec une
-      clé, publishers <b>et</b> spectateurs doivent la donner (<code>?key=</code>) — y compris le flux de la box s'il vise
-      ce relais. Relancer le relais coupe les flux quelques secondes.</p>
   </section>
 
   <section data-onglet="habillage">
-    <h2>Mises à jour</h2>
-    <div id="maj"><p class="note">chargement…</p></div>
-    <p class="note">Source : GitHub. « Vérifier » ne change rien ; « Appliquer » installe la dernière version poussée sur
+    <h2>Mises à jour <span class="aide" tabindex="0">❔<span class="aide-texte">Source : GitHub. « Vérifier » ne change rien ; « Appliquer » installe la dernière version poussée sur
       <b>main</b>. L'application garde l'état de la régie et les photos. En direct : si seules les pages changent, le serveur
-      n'est pas relancé (les pages se rechargent d'elles-mêmes).</p>
+      n'est pas relancé (les pages se rechargent d'elles-mêmes).</span></span></h2>
+    <div id="maj"><p class="note">chargement…</p></div>
   </section>
 
   <section data-onglet="etat">
@@ -214,10 +243,9 @@
   </section>
 
   <section data-onglet="etat">
-    <h2>Surveillance</h2>
+    <h2>Surveillance <span class="aide" tabindex="0">❔<span class="aide-texte">La carte SD ne devrait presque plus rien recevoir (journal en mémoire) : un rythme qui monte en continu
+      signale un programme qui écrit. Images par seconde : mesurées dans la page affichée, sur une seconde.</span></span></h2>
     <div class="grille" id="surv"></div>
-    <p class="note">La carte SD ne devrait presque plus rien recevoir (journal en mémoire) : un rythme qui monte en continu
-      signale un programme qui écrit. Images par seconde : mesurées dans la page affichée, sur une seconde.</p>
   </section>
 
   <section data-onglet="reseau">
@@ -236,19 +264,18 @@
           <div><label for="eth-dns">DNS</label><input id="eth-dns" placeholder="192.168.1.1 1.1.1.1"></div>
         </div>
       </div>
-      <p class="note">L'adresse de secours <b id="eth-secours"></b> reste toujours joignable quand aucun DHCP ne répond.
-        Après un changement, il faut le <b>confirmer</b> : sans confirmation, la box revient seule à l'ancien réglage.</p>
+      <span class="aide" tabindex="0">❔<span class="aide-texte">L'adresse de secours <b id="eth-secours"></b> reste toujours joignable quand aucun DHCP ne répond.
+        Après un changement, il faut le <b>confirmer</b> : sans confirmation, la box revient seule à l'ancien réglage.</span></span>
       <div class="actions"><button class="principal" type="submit">Appliquer</button></div>
     </form>
   </section>
 
   <section data-onglet="reseau">
-    <h2>Wi-Fi</h2>
+    <h2>Wi-Fi <span class="aide" tabindex="0">❔<span class="aide-texte">Le réseau de plus haute priorité visible est choisi. L'Ethernet passe toujours avant le Wi-Fi.</span></span></h2>
     <div class="table"><table>
       <thead><tr><th>Réseau</th><th>Signal</th><th>Priorité</th><th></th></tr></thead>
       <tbody id="wifi-connus"></tbody>
     </table></div>
-    <p class="note">Le réseau de plus haute priorité visible est choisi. L'Ethernet passe toujours avant le Wi-Fi.</p>
     <h3>Ajouter un réseau</h3>
     <form id="f-wifi">
       <div class="ligne">
@@ -263,7 +290,8 @@
   </section>
 
   <section data-onglet="systeme">
-    <h2>Heure</h2>
+    <h2>Heure <span class="aide" tabindex="0">❔<span class="aide-texte">Sans aucun serveur de temps joignable : la box prend l'heure de ce navigateur (à une fraction de seconde près).
+      Vérifie d'abord que l'heure de cet appareil est juste.</span></span></h2>
     <div class="grille">
       <div class="case"><small>Heure de la box</small><b class="grandeheure" id="h-box">—</b></div>
       <div class="case"><small>Heure de ce navigateur</small><b class="grandeheure" id="h-nav">—</b></div>
@@ -275,17 +303,15 @@
     <form id="f-ntp">
       <label for="ntp-serveurs">Adresses (ex. le PC vMix), séparées par des espaces</label>
       <input id="ntp-serveurs" placeholder="192.168.1.10">
-      <p class="note">Pour un car sans Internet. Sur le PC vMix : lancer une fois <b>serveur-heure-windows.cmd</b> en administrateur.</p>
+      <span class="aide" tabindex="0">❔<span class="aide-texte">Pour un car sans Internet. Sur le PC vMix : lancer une fois <b>serveur-heure-windows.cmd</b> en administrateur.</span></span>
       <div class="actions"><button class="principal" type="submit">Enregistrer</button></div>
     </form>
     <h3>En dernier recours</h3>
-    <p class="note">Sans aucun serveur de temps joignable : la box prend l'heure de ce navigateur (à une fraction de seconde près).
-      Vérifie d'abord que l'heure de cet appareil est juste.</p>
     <div class="actions"><button id="b-heure" type="button">Mettre la box à l'heure de ce navigateur</button></div>
   </section>
 
   <section data-onglet="systeme">
-    <h2>Machine</h2>
+    <h2>Machine <span class="aide" tabindex="0">❔<span class="aide-texte">Le journal est gardé en mémoire seulement (aucune écriture sur la carte) : il repart à zéro à chaque démarrage.</span></span></h2>
     <div class="grille" id="m-services"></div>
     <div class="actions">
       <button id="b-r-serveur" type="button">Relancer le serveur d'habillage</button>
@@ -305,7 +331,6 @@
       <div style="flex: 0 1 auto"><button id="b-journal" type="button">Afficher</button></div>
     </div>
     <pre id="journal" class="cache"></pre>
-    <p class="note">Le journal est gardé en mémoire seulement (aucune écriture sur la carte) : il repart à zéro à chaque démarrage.</p>
   </section>
 
   <section data-onglet="systeme">
@@ -322,9 +347,11 @@
 </div>
 <div id="message"></div>
 
+<div id="bulle"></div>
 <script>
 'use strict';
 const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 let E = null, ecartHorloge = 0, minuteur = null;
 
@@ -373,10 +400,17 @@ function rendre() {
   const fx = E.wb;
   if (fx) {
     if (!$('#f-wb').dataset.touche) {
-      $('#wb-actif').checked = fx.actif; $('#wb-url').value = fx.url; $('#wb-canal').value = fx.canal; $('#wb-debit').value = fx.debit;
+      const local = /^wss?:\/\/(127\.0\.0\.1|localhost)(:|\/|$)/.test(fx.url);
+      $$('input[name="wb-dest"]').forEach(r => { r.checked = r.value === (local ? 'local' : 'perso'); });
+      $('#wb-actif').checked = fx.actif; $('#wb-url').value = local ? '' : fx.url; $('#wb-canal').value = fx.canal; $('#wb-debit').value = fx.debit;
       $('#wb-fps').innerHTML = fx.fpsPossibles.map(f => `<option value="${f}" ${f === fx.fps ? 'selected' : ''}>${f} img/s</option>`).join('');
+      $('#wb-codec').innerHTML = fx.codecs.map(c => `<option value="${c}" ${c === fx.codec ? 'selected' : ''}>${c === 'hevc' ? 'H.265 (HEVC)' : 'H.264'}</option>`).join('');
+      $('#wb-rc').innerHTML = fx.rcs.map(c => `<option value="${c}" ${c === fx.rc ? 'selected' : ''}>${c.toUpperCase()}</option>`).join('');
+      const gs = fx.gop / fx.fps;
+      $('#wb-gop').innerHTML = fx.gopsS.map(g => `<option value="${g}" ${Math.abs(g - gs) < 0.01 ? 'selected' : ''}>${g < 1 ? '½' : g} s</option>`).join('');
       $('#wb-cle').value = ''; $('#wb-cle').placeholder = fx.cle ? 'définie — laisser vide pour la garder' : 'aucune';
       $('#wb-cle-effacer').checked = false;
+      destWb();
     }
     // le spectateur se regarde sur le relais DESTINATION (celui de la box = l'adresse de cette page)
     let hote = location.hostname, port = 8080;
@@ -388,7 +422,7 @@ function rendre() {
         + (fx.stats ? ` · ${esc(fx.stats.replace(/^pxl-wb-enc : /, ''))}` : fx.actif && fx.derniere ? ` · ${esc(fx.derniere)}` : '')
         + (fx.actif ? ` · <a href="${esc(vue)}" target="_blank">regarder le flux</a>` : '');
   }
-  // Relais de la box
+  // Relais local
   const rl = E.relais;
   if (rl) {
     if (!$('#f-relais').dataset.touche) {
@@ -575,7 +609,28 @@ $('#f-ecran').addEventListener('submit', ev => {
     delete $('#f-ecran').dataset.touche; }, 'écran relancé');
 });
 $('#f-wb').addEventListener('input', () => { $('#f-wb').dataset.touche = 1; });
-$('#wb-local').addEventListener('click', () => { $('#wb-url').value = 'ws://127.0.0.1:8080'; $('#f-wb').dataset.touche = 1; });
+function destWb() {   // « Personnalisé » ouvre l'adresse, la clé et la recherche
+  const perso = ($('input[name="wb-dest"]:checked') || {}).value === 'perso';
+  $('#wb-perso').hidden = !perso; $('#wb-chercher-l').hidden = !perso; if (!perso) $('#wb-trouves').innerHTML = '';
+}
+$$('input[name="wb-dest"]').forEach(r => r.addEventListener('change', destWb));
+// La bulle des ❔ : attachée à la souris ; au doigt (pas de survol), un appui l'ouvre sous le ❔, un autre la ferme
+(() => {
+  const b = $('#bulle'); let ouverte = null;
+  const placer = (x, y) => { const r = b.getBoundingClientRect();
+    b.style.left = Math.max(8, Math.min(x + 16, innerWidth - r.width - 8)) + 'px';
+    b.style.top = (y + 18 + r.height > innerHeight - 8 ? Math.max(8, y - r.height - 12) : y + 18) + 'px'; };
+  const montrer = (a, x, y) => { b.innerHTML = a.querySelector('.aide-texte').innerHTML; b.style.display = 'block'; ouverte = a; placer(x, y); };
+  const cacher = () => { b.style.display = 'none'; ouverte = null; };
+  document.addEventListener('mouseover', e => { const a = e.target.closest && e.target.closest('.aide'); if (a) montrer(a, e.clientX, e.clientY); });
+  document.addEventListener('mousemove', e => { if (ouverte) placer(e.clientX, e.clientY); });
+  document.addEventListener('mouseout', e => { const a = e.target.closest && e.target.closest('.aide'); if (a && !a.contains(e.relatedTarget)) cacher(); });
+  document.addEventListener('click', e => { const a = e.target.closest && e.target.closest('.aide');
+    if (!a) return cacher(); e.preventDefault(); e.stopPropagation();
+    if (ouverte === a && b.style.display === 'block' && e.pointerType !== 'mouse') return cacher();
+    const r = a.getBoundingClientRect(); montrer(a, r.left, r.bottom); }, true);
+  addEventListener('scroll', cacher, { passive: true });
+})();
 $('#wb-chercher').addEventListener('click', ev => {
   const b = ev.target; b.disabled = true; $('#wb-trouves').innerHTML = '<p class="note">recherche…</p>';
   appel('/api/relais/decouverte', {}).then(({ relais }) => {
@@ -598,7 +653,9 @@ $('#f-relais').addEventListener('submit', ev => {
 });
 $('#f-wb').addEventListener('submit', ev => {
   ev.preventDefault();
-  action(ev.submitter, async () => { await appel('/api/wb', { actif: $('#wb-actif').checked ? '1' : '0', url: $('#wb-url').value,
+  action(ev.submitter, async () => { await appel('/api/wb', { actif: $('#wb-actif').checked ? '1' : '0',
+    url: ($('input[name="wb-dest"]:checked') || {}).value === 'perso' ? $('#wb-url').value : 'ws://127.0.0.1:8080',
+    codec: $('#wb-codec').value, rc: $('#wb-rc').value, gopS: $('#wb-gop').value,
     canal: $('#wb-canal').value, fps: $('#wb-fps').value, debit: $('#wb-debit').value,
     cle: $('#wb-cle').value, cleEffacer: $('#wb-cle-effacer').checked ? '1' : '0' }); delete $('#f-wb').dataset.touche; },
     $('#wb-actif').checked ? 'flux TurboHQ lancé' : 'flux TurboHQ arrêté');

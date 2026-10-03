@@ -1,6 +1,7 @@
 // pxl-wb-enc — encodeur H.264 du flux writeback de Weston (patch PXL), SANS COPIE.
 //
-//   pxl-wb-enc [--socket /run/pxl-preview/pxl-wb.sock] [--fps 25] [--debit 6000] > flux.h264
+//   pxl-wb-enc [--socket /run/pxl-preview/pxl-wb.sock] [--fps 25] [--debit 6000] [--codec h264|hevc]
+//              [--gop <images>] [--rc cbr|vbr] > flux (Annex-B)
 //
 // Weston (drm-backend patché, voir patches/weston-writeback-flux.patch) écrit l'image du HDMI dans un anneau de
 // tampons NV12 et nous en passe les DMA-BUF une fois ; ensuite, à chaque image, un message « case n prête » et la
@@ -55,7 +56,7 @@ static uint32_t TAILLE = 0, UVOFF = 0;
 static MppCtx ctx; static MppApi *api; static MppBufferGroup grp, grp_t; static MppBuffer mb[PXL_WB_N], tb[TISSE_N];
 static rga_buffer_handle_t rh[PXL_WB_N], rt[TISSE_N];
 static uint8_t *vue[PXL_WB_N];
-static int fps = 25, debit = 6000, enc_ok = 0, tisse_ok = 0, tisse_i = 0;
+static int fps = 25, debit = 6000, gop = 0, hevc = 0, vbr = 0, enc_ok = 0, tisse_ok = 0, tisse_i = 0;
 
 static double ms(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return t.tv_sec * 1e3 + t.tv_nsec / 1e6; }
 
@@ -113,24 +114,31 @@ static void tisse_ouvrir(void) {
 }
 
 static int enc_ouvrir(const struct pxl_wb_msg *m) {
-	if (mpp_create(&ctx, &api) || mpp_init(ctx, MPP_CTX_ENC, MPP_VIDEO_CodingAVC)) { fprintf(stderr, "pxl-wb-enc : mpp_init\n"); return -1; }
+	const MppCodingType codage = hevc ? MPP_VIDEO_CodingHEVC : MPP_VIDEO_CodingAVC;
+	if (mpp_create(&ctx, &api) || mpp_init(ctx, MPP_CTX_ENC, codage)) { fprintf(stderr, "pxl-wb-enc : mpp_init\n"); return -1; }
 	MppEncCfg cfg = NULL; mpp_enc_cfg_init(&cfg);
 	mpp_enc_cfg_set_s32(cfg, "prep:width", m->w);
 	mpp_enc_cfg_set_s32(cfg, "prep:height", m->h);
 	mpp_enc_cfg_set_s32(cfg, "prep:hor_stride", m->pitch);
 	mpp_enc_cfg_set_s32(cfg, "prep:ver_stride", m->uvoff / m->pitch);   // la chroma commence à uvoff
 	mpp_enc_cfg_set_s32(cfg, "prep:format", MPP_FMT_YUV420SP);
-	mpp_enc_cfg_set_s32(cfg, "rc:mode", MPP_ENC_RC_MODE_CBR);
+	// CBR : débit tenu à ±6 % (un lien réseau sait ce qui arrive). VBR : moyenne visée, pointes jusqu'à ×1,5 — une
+	// image fixe ne coûte presque rien, un changement de plan prend ce qu'il faut.
+	mpp_enc_cfg_set_s32(cfg, "rc:mode", vbr ? MPP_ENC_RC_MODE_VBR : MPP_ENC_RC_MODE_CBR);
 	mpp_enc_cfg_set_s32(cfg, "rc:bps_target", debit * 1000);
-	mpp_enc_cfg_set_s32(cfg, "rc:bps_max", debit * 1000 * 17 / 16);
-	mpp_enc_cfg_set_s32(cfg, "rc:bps_min", debit * 1000 * 15 / 16);
+	mpp_enc_cfg_set_s32(cfg, "rc:bps_max", vbr ? debit * 1000 * 3 / 2 : debit * 1000 * 17 / 16);
+	mpp_enc_cfg_set_s32(cfg, "rc:bps_min", vbr ? debit * 1000 / 2 : debit * 1000 * 15 / 16);
 	mpp_enc_cfg_set_s32(cfg, "rc:fps_in_num", fps);  mpp_enc_cfg_set_s32(cfg, "rc:fps_in_denorm", 1);
 	mpp_enc_cfg_set_s32(cfg, "rc:fps_out_num", fps); mpp_enc_cfg_set_s32(cfg, "rc:fps_out_denorm", 1);
-	mpp_enc_cfg_set_s32(cfg, "rc:gop", fps);   // une image clé par seconde : un spectateur qui arrive voit vite
-	mpp_enc_cfg_set_s32(cfg, "codec:type", MPP_VIDEO_CodingAVC);
-	mpp_enc_cfg_set_s32(cfg, "h264:profile", 100);
-	mpp_enc_cfg_set_s32(cfg, "h264:level", 42);
-	mpp_enc_cfg_set_s32(cfg, "h264:cabac_en", 1);
+	// GOP : une image clé toutes les `gop` images (défaut : une par seconde) — un spectateur qui arrive attend au pire
+	// un GOP avant de voir quelque chose ; plus long = moins de débit gaspillé en images clés.
+	mpp_enc_cfg_set_s32(cfg, "rc:gop", gop > 0 ? gop : fps);
+	mpp_enc_cfg_set_s32(cfg, "codec:type", codage);
+	if (!hevc) {
+		mpp_enc_cfg_set_s32(cfg, "h264:profile", 100);
+		mpp_enc_cfg_set_s32(cfg, "h264:level", 42);
+		mpp_enc_cfg_set_s32(cfg, "h264:cabac_en", 1);
+	}
 	int r = api->control(ctx, MPP_ENC_SET_CFG, cfg); mpp_enc_cfg_deinit(cfg);
 	if (r) { fprintf(stderr, "pxl-wb-enc : MPP_ENC_SET_CFG %d\n", r); return -1; }
 	MppEncHeaderMode hm = MPP_ENC_HEADER_MODE_EACH_IDR; api->control(ctx, MPP_ENC_SET_HEADER_MODE, &hm);
@@ -141,8 +149,8 @@ static int enc_ouvrir(const struct pxl_wb_msg *m) {
 		if (mpp_buffer_import(&mb[i], &info)) { fprintf(stderr, "pxl-wb-enc : import %d\n", i); return -1; }
 	}
 	W = m->w; H = m->h; PAS = m->pitch; TAILLE = m->size; UVOFF = m->uvoff; enc_ok = 1;
-	fprintf(stderr, "pxl-wb-enc : %dx%d NV12 (pas %u) -> H.264 %d img/s %d kbit/s, %d tampons importés sans copie\n",
-		W, H, m->pitch, fps, debit, ring_n);
+	fprintf(stderr, "pxl-wb-enc : %dx%d NV12 (pas %u) -> %s %d img/s %d kbit/s %s, GOP %d, %d tampons importés sans copie\n",
+		W, H, m->pitch, hevc ? "H.265" : "H.264", fps, debit, vbr ? "VBR" : "CBR", gop > 0 ? gop : fps, ring_n);
 	tisse_ouvrir();
 	return 0;
 }
@@ -235,7 +243,11 @@ int main(int argc, char **argv) {
 		if (!strcmp(argv[i], "--socket")) chemin = argv[i + 1];
 		else if (!strcmp(argv[i], "--fps")) fps = atoi(argv[i + 1]);
 		else if (!strcmp(argv[i], "--debit")) debit = atoi(argv[i + 1]);
+		else if (!strcmp(argv[i], "--codec")) hevc = !strcmp(argv[i + 1], "hevc") || !strcmp(argv[i + 1], "h265");
+		else if (!strcmp(argv[i], "--gop")) gop = atoi(argv[i + 1]);
+		else if (!strcmp(argv[i], "--rc")) vbr = !strcmp(argv[i + 1], "vbr");
 	}
+	if (gop < 0 || gop > 600) gop = 0;
 	if (fps < 1 || fps > 60) fps = 25;
 	signal(SIGPIPE, SIG_IGN);
 	struct sockaddr_un a = { .sun_family = AF_UNIX };
