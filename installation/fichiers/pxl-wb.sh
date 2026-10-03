@@ -11,8 +11,14 @@ URL=${WB_URL:-ws://127.0.0.1:8080}
 CANAL=${WB_CANAL:-pxlnode}
 FPS=${WB_FPS:-25}
 DEBIT=${WB_DEBIT:-6000}
+# Clé d'accès d'un relais qui en exige une (?key=, PXL_THQ_KEY côté relais) : rangée À PART, dans /etc/pxl-kiosk/wb.cle
+# (0640 root:pxl, posée par /admin) — pas dans pxl-kiosk.conf, que tout le système lit. Passée par l'environnement,
+# jamais sur la ligne de commande (ps la montrerait), jamais écrite dans le journal.
+CLE_F=/etc/pxl-kiosk/wb.cle
+[ -s "$CLE_F" ] && THQ_KEY=$(cat "$CLE_F") && export THQ_KEY
 SOCK=${XDG_RUNTIME_DIR_PREVIEW:-/run/pxl-preview}/pxl-wb.sock
-echo "pxl-wb : sortie HDMI → H.264 ${FPS} img/s ${DEBIT} kbit/s → $URL canal $CANAL"
+AVEC_CLE=; [ -n "${THQ_KEY:-}" ] && AVEC_CLE=" (avec clé d'accès)"
+echo "pxl-wb : sortie HDMI → H.264 ${FPS} img/s ${DEBIT} kbit/s → $URL canal $CANAL$AVEC_CLE"
 /usr/local/lib/pxl-kiosk/pxl-wb-enc --socket "$SOCK" --fps "$FPS" --debit "$DEBIT" \
   | /opt/node/bin/node /usr/local/lib/pxl-kiosk/turbohq-client/bin/thq-publish.js \
       --url "$URL" --channel "$CANAL" --fps "$FPS" --pts arrivee

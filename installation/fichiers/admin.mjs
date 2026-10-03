@@ -16,7 +16,8 @@ import { createServer } from 'node:http';
 import { execFile } from 'node:child_process';
 import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync, renameSync, chmodSync, readdirSync } from 'node:fs';
 import { randomBytes, randomUUID, scryptSync, timingSafeEqual, createHmac, createHash } from 'node:crypto';
-import { hostname, uptime, release } from 'node:os';
+import { hostname, uptime, release, networkInterfaces } from 'node:os';
+import dgram from 'node:dgram';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import * as maj from './maj.mjs';
@@ -211,8 +212,16 @@ const MODES_HDMI = ['1280x720@25', '1280x720@50', '1920x1080@25', '1920x1080@50'
 // En entrelacé : « 50i » (Weston à la trame, mouvement fluide à l'écran) ou « psf » (Weston à l'IMAGE, 25 img/s : chaque
 // image tient ses deux trames, donc écran ET flux writeback propres en mouvement — preview.sh pose PXL_PSF=1).
 const ENTRELACES = ['50i', 'psf'];
-const ecran = () => { const c = lireConf();
-  return { mode: c.SORTIE_MODE || null, modes: MODES_HDMI, entrelace: ENTRELACES.includes(c.ENTRELACE) ? c.ENTRELACE : 'psf', entrelaces: ENTRELACES }; };
+// Les modes que l'écran BRANCHÉ déclare (pxl-mode --liste) : un mode absent n'est pas refusé — on règle parfois la box
+// pour la TV du lieu —, mais il est signalé, et preview.sh se replie explicitement (sans quoi Weston prendrait le mode
+// préféré de l'écran : 3840x2160p60 sur la TV du labo, mesuré le 03/10/2026 sur un 720p25 qu'elle ne déclare pas).
+async function ecran() {
+  const c = lireConf();
+  const l = await run('/usr/local/lib/pxl-kiosk/pxl-mode', ['--liste', c.SORTIE_NOM || 'HDMI-A-1']);
+  const declares = l.ok && l.out.trim() ? new Set(l.out.trim().split('\n')) : null;
+  return { mode: c.SORTIE_MODE || null, modes: MODES_HDMI, dispo: declares ? MODES_HDMI.filter(m => declares.has(m)) : null,
+    entrelace: ENTRELACES.includes(c.ENTRELACE) ? c.ENTRELACE : 'psf', entrelaces: ENTRELACES };
+}
 const poserLigne = (texte, cle, valeur) => { const re = new RegExp(`^\\s*${cle}=.*$`, 'm'), l = `${cle}=${valeur}`;
   return re.test(texte) ? texte.replace(re, l) : texte.replace(/\n?$/, '\n') + l + '\n'; };
 const ecrireAtomique = (f, t) => { writeFileSync(f + '.part', t); renameSync(f + '.part', f); };
@@ -231,6 +240,10 @@ async function regleEcran(q) {
 // Weston patché écrit l'image du HDMI (writeback du VOP2) dans des tampons que l'encodeur MPP lit SANS COPIE, puis
 // thq-publish l'envoie à un relais TurboHQ. Réglages dans /etc/pxl-kiosk.conf (WB_*), comme la sortie HDMI.
 const WB_FPS = [25, 30, 50];
+// Clé d'accès d'un relais qui en exige une : À PART de pxl-kiosk.conf (que tout le système lit), 0640 root:pxl — pxl-wb
+// tourne en pxl. Jamais renvoyée à la page : elle n'y apparaît que comme « définie ».
+const WB_CLE = '/etc/pxl-kiosk/wb.cle';
+const CLE_OK = /^[\x21-\x7e]{4,256}$/;
 async function wb() {
   const c = lireConf();
   const act = (await run('systemctl', ['is-active', 'pxl-wb'])).out.trim();
@@ -241,7 +254,7 @@ async function wb() {
   const client = existsSync('/usr/local/lib/pxl-kiosk/turbohq-client/bin/thq-publish.js');
   return { actif: c.WB_ACTIF === '1', url: c.WB_URL || 'ws://127.0.0.1:8080', canal: c.WB_CANAL || 'pxlnode',
     fps: +(c.WB_FPS || 25), debit: +(c.WB_DEBIT || 6000), service: act, stats, derniere: lignes.slice(-1)[0] || null,
-    patche, client, fpsPossibles: WB_FPS };
+    patche, client, fpsPossibles: WB_FPS, cle: !!lire(WB_CLE) };
 }
 async function regleWb(q) {
   const actif = q.actif === '1' || q.actif === true || q.actif === 'true';
@@ -256,10 +269,81 @@ async function regleWb(q) {
   for (const [k, v] of [['WB_ACTIF', actif ? 1 : 0], ['WB_URL', `"${url}"`], ['WB_CANAL', canal], ['WB_FPS', fps], ['WB_DEBIT', debit]])
     t = poserLigne(t, k, v);
   ecrireAtomique(CONF, t);
+  if (q.cleEffacer === '1') { try { unlinkSync(WB_CLE); } catch { /* déjà absente */ } }
+  else if (q.cle) {
+    exiger(CLE_OK.test(q.cle), 'clé d\'accès invalide (4 à 256 caractères imprimables, sans espace)');
+    writeFileSync(WB_CLE + '.part', q.cle, { mode: 0o640 }); chmodSync(WB_CLE + '.part', 0o640);
+    await run('chown', ['root:pxl', WB_CLE + '.part']); renameSync(WB_CLE + '.part', WB_CLE);
+  }
   const r = actif ? await run('systemctl', ['enable', '--now', 'pxl-wb']).then(async x => x.ok ? run('systemctl', ['restart', 'pxl-wb']) : x)
     : await run('systemctl', ['disable', '--now', 'pxl-wb']);
   exiger(r.ok, r.err);
   return {};
+}
+
+// ---------------------------------------------------------------- relais TurboHQ de la box (service pxl-relais)
+// Le code du relais vient du dépôt TurboHQ (posé à part dans /usr/local/lib/turbohq-relay) ; ses réglages sont dans
+// /etc/default/pxl-relais : le nom qu'il annonce sur le réseau (PXL_THQ_NAME) et une clé d'accès optionnelle
+// (PXL_THQ_KEY, exigée alors en ?key= par publishers ET viewers). Port 8080, fixé par l'unité.
+const RELAIS_DEF = '/etc/default/pxl-relais', RELAIS_PORT = 8080;
+const lireDefaut = () => { const o = {}; for (const l of (lire(RELAIS_DEF) || '').split('\n')) {
+  const m = l.match(/^\s*([A-Z_]+)=("?)(.*)\2\s*$/); if (m) o[m[1]] = m[3]; } return o; };
+const oterLigne = (texte, cle) => texte.replace(new RegExp(`^\\s*${cle}=.*\n?`, 'm'), '');
+async function relais() {
+  const d = lireDefaut();
+  const service = (await run('systemctl', ['is-active', 'pxl-relais'])).out.trim();
+  let canaux = null;
+  if (service === 'active') try {
+    const r = await fetch(`http://127.0.0.1:${RELAIS_PORT}/api/turbohq/viewers${d.PXL_THQ_KEY ? '?key=' + encodeURIComponent(d.PXL_THQ_KEY) : ''}`,
+      { signal: AbortSignal.timeout(2000) });
+    canaux = (await r.json()).map(c => ({ canal: c.path, source: !!c.hasPublisher,
+      viewers: Math.max(0, (c.viewers | 0) - (c.probes | 0)), sondes: c.probes | 0 }));
+  } catch { /* relais muet : la page le dit */ }
+  return { present: existsSync('/usr/local/lib/turbohq-relay/server_turbohq.mjs'), service, port: RELAIS_PORT,
+    nom: d.PXL_THQ_NAME || '', cle: !!d.PXL_THQ_KEY, canaux };
+}
+async function regleRelais(q) {
+  const actif = q.actif === '1' || q.actif === true || q.actif === 'true';
+  const nom = String(q.nom || '').trim();
+  exiger(/^[A-Za-z0-9_.-]{1,40}$/.test(nom), 'nom du relais invalide (lettres, chiffres, - _ .)');
+  exiger(!actif || existsSync('/usr/local/lib/turbohq-relay/server_turbohq.mjs'), 'relais TurboHQ absent sur la box');
+  let t = lire(RELAIS_DEF) ?? '# Relais TurboHQ de la box — réglé par /admin';
+  t = poserLigne(t, 'PXL_THQ_NAME', nom);
+  if (q.cleEffacer === '1') t = oterLigne(t, 'PXL_THQ_KEY');
+  else if (q.cle) { exiger(CLE_OK.test(q.cle), 'clé d\'accès invalide (4 à 256 caractères imprimables, sans espace)'); t = poserLigne(t, 'PXL_THQ_KEY', q.cle); }
+  writeFileSync(RELAIS_DEF + '.part', t.replace(/\n?$/, '\n'), { mode: 0o600 }); chmodSync(RELAIS_DEF + '.part', 0o600);
+  renameSync(RELAIS_DEF + '.part', RELAIS_DEF);
+  const r = actif ? await run('systemctl', ['enable', '--now', 'pxl-relais']).then(x => x.ok ? run('systemctl', ['restart', 'pxl-relais']) : x)
+    : await run('systemctl', ['disable', '--now', 'pxl-relais']);
+  exiger(r.ok, r.err);
+  return {};
+}
+// Les relais visibles sur le réseau local : la sonde « TURBOHQ? » de leur découverte (UDP 41808, discovery.mjs du dépôt
+// TurboHQ), en diffusion sur chaque interface + la boucle locale. ⚠ Rien ne traverse un routeur ni le tailnet : un relais
+// en 100.x ne répond jamais ici — la saisie manuelle de l'adresse reste le chemin qui marche toujours.
+function decouvrir() {
+  return new Promise(res => {
+    const s = dgram.createSocket('udp4'), vus = new Map();
+    const miennes = new Set(['127.0.0.1']);
+    const cibles = new Set(['255.255.255.255', '127.0.0.1']);
+    for (const l of Object.values(networkInterfaces())) for (const n of l || []) {
+      if (n.family !== 'IPv4' || n.internal || !n.netmask) continue;
+      miennes.add(n.address);
+      const a = n.address.split('.').map(Number), m = n.netmask.split('.').map(Number);
+      cibles.add(a.map((o, i) => (o | (~m[i] & 255))).join('.'));
+    }
+    s.on('message', (msg, r) => { try {
+      const j = JSON.parse(msg.toString()); if (j.magic !== 'TURBOHQ') return;
+      const ici = miennes.has(r.address), cle = ici ? 'ici' : `${j.nom || r.address}`;
+      if (vus.has(cle) && !(ici && r.address === '127.0.0.1')) return;
+      vus.set(cle, { nom: j.nom || null, adresse: ici ? '127.0.0.1' : r.address, ici, ws: j.ws | 0, wss: j.wss | 0 || null,
+        canaux: (j.canaux || []).map(c => ({ canal: String(c.nom), source: !!c.source, viewers: c.viewers | 0 })), tronque: !!j.tronque });
+    } catch { /* paquet étranger */ } });
+    s.on('error', () => {});
+    s.bind(0, () => { s.setBroadcast(true); const p = Buffer.from('TURBOHQ?');
+      for (const a of cibles) s.send(p, 41808, a, () => {}); });
+    setTimeout(() => { try { s.close(); } catch { /* déjà fermée */ } res([...vus.values()]); }, 1200);
+  });
 }
 
 async function machine() {
@@ -465,7 +549,7 @@ async function api(req, u, q) {
   const p = u.pathname;
   if (p === '/api/etat') {
     const [r, e, w, h, m, s, v] = await Promise.all([reseau(), ethernet(), wifi(), heure(), machine(), surveillance(), versions()]);
-    return { reseau: r, ethernet: e, wifi: w, heure: h, machine: m, materiel: materiel(), surveillance: s, versions: v, mode: mode(), ecran: ecran(), wb: await wb(), retour: retourEnCours(), retour_s: RETOUR_S };
+    return { reseau: r, ethernet: e, wifi: w, heure: h, machine: m, materiel: materiel(), surveillance: s, versions: v, mode: mode(), ecran: await ecran(), wb: await wb(), relais: await relais(), retour: retourEnCours(), retour_s: RETOUR_S };
   }
   if (p === '/api/wifi/scan') {
     const r = await run('nmcli', ['-t', '-f', 'SSID,SIGNAL,SECURITY', 'dev', 'wifi', 'list', '--rescan', 'yes'], { timeout: 30000 });
@@ -522,6 +606,8 @@ async function actionPost(p, q) {
     case '/api/mode': return regleMode(q);
     case '/api/ecran': return regleEcran(q);
     case '/api/wb': return regleWb(q);
+    case '/api/relais': return regleRelais(q);
+    case '/api/relais/decouverte': return { relais: await decouvrir() };
     // mises à jour depuis GitHub (maj.mjs) — une seule à la fois
     case '/api/maj/verifier': return uneMaj(() => maj.verifier(q.cible));
     case '/api/maj/appliquer': return uneMaj(() => maj.appliquer(q.cible));

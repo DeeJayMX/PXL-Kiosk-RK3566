@@ -124,3 +124,32 @@ bouge (l'écran, lui, est en vrai 50i). Le réglage **« Cadence en entrelacé �
 | recalages | — | 3 au démarrage, puis aucun en régime |
 | image du flux | nette (fixe), peigne ce qui bouge (déduit) | nette (zoom sur l'horloge) |
 | ⚠️ non mesuré | | le rendu sur un diffuseur qui désentrelace en « tissage » ; le calage est fait pour lui |
+
+## Tous les modes de /admin, et un relais extérieur (ajout du 03/10/2026, v1.10.0)
+
+**Mesuré sur la box, chaque mode réglé comme /admin le règle** (flux 25 img/s demandées, 6 Mbit/s) :
+
+| mode demandé | posé | Chromium (rAF) | flux |
+|---|---|---|---|
+| 720p25 | 🔴 **3840x2160p60** avant correctif ; **1280x720p50** après (repli dit) | 48,7 | 24,9 img/s |
+| 720p50 | 1280x720p50 | 48,7 | 24,3-24,8 img/s |
+| 1080p25 | 1920x1080p25 | — | 24,9 img/s |
+| 1080p50 | 1920x1080p50 | — | 24,7 img/s |
+| 1080i50 (PsF) | 1920x1080i50 | 25,0 | 24,5-24,6 img/s, 0 paire cassée |
+
+🔴 **Un mode que l'écran ne déclare pas fait prendre à Weston son mode PRÉFÉRÉ, sans un mot** : la TV du labo ne
+déclare pas le 720p25, Weston est parti en **4K60** (et le flux à 15 img/s). `pxl-mode --liste` donne les modes de
+l'écran branché : `preview.sh` se replie explicitement (720p50, puis 1080p50, puis 60 Hz) et le journalise ; /admin
+signale le mode absent sans l'interdire (on règle parfois la box pour la TV du lieu).
+⚠️ Et la fenêtre de composition de 15 ms du PsF ne s'applique plus qu'en **entrelacé** : le PsF étant devenu le défaut,
+elle aurait affamé Chromium en 50p (une image y dure 20 ms).
+
+**Relais extérieur — mesuré vers la TurboNode** : flux poussé sur `ws://100.109.186.25:8080` (le tailnet ; les deux
+boxes ne partagent pas de fil Ethernet), relu **depuis la TurboNode** par `thq-record` : 169 images 1920×1080, 0 perdue,
+latence 8 ms (p95 32 ms). Ce relais exige une **clé d'accès** : sans elle, le publisher reboucle sur
+`reconnecting … error`. La clé est rangée dans `/etc/pxl-kiosk/wb.cle` (0640 root:pxl, posée par /admin, jamais
+réaffichée), passée au publisher par l'environnement (`THQ_KEY`), jamais sur la ligne de commande.
+
+**/admin** : *Flux TurboHQ* (destination, « Relais de la box », recherche des relais du réseau local par la sonde UDP
+41808 — ⚠️ elle ne traverse ni un routeur ni le tailnet —, clé) et *Relais TurboHQ de la box* (en service, nom annoncé,
+clé optionnelle, canaux en cours avec leur source et leurs spectateurs).

@@ -2,6 +2,10 @@
 // même fréquence, et sa ligne de timings ignore l'entrelacé ; le paramètre video= du noyau aussi — mesuré le 02/10/2026).
 //
 //   pxl-mode 1920x1080i@50 [HDMI-A-1]
+//   pxl-mode --liste [HDMI-A-1]        les modes que l'écran déclare, un par ligne (« 1280x720@50 », « 1920x1080i@50 »)
+//
+// ⚠ La liste sert à NE PAS demander un mode absent : Weston prend alors le mode PRÉFÉRÉ de l'écran sans rien dire —
+// 3840x2160p60 sur la TV du labo (mesuré le 03/10/2026, en demandant un 720p25 qu'elle ne déclare pas).
 //
 // Lancé par preview.sh AVANT Weston, qui est alors réglé sur « mode=current » et reprend ce mode tel quel. Déroulé :
 // maître DRM (premier à ouvrir la carte) → mode posé avec un tampon noir → on rend la main (drmDropMaster) MAIS on garde le
@@ -22,8 +26,27 @@ static const char *nom_type(uint32_t t) {
 	default: return "?"; }
 }
 
+static int lister(const char *voulu) {
+	int fd = open("/dev/dri/card0", O_RDWR | O_CLOEXEC);   // lecture seule des modes : pas besoin d'être maître
+	if (fd < 0) return 1;
+	drmModeRes *res = drmModeGetResources(fd);
+	if (!res) return 1;
+	for (int k = 0; k < res->count_connectors; k++) {
+		drmModeConnector *x = drmModeGetConnector(fd, res->connectors[k]);
+		char n[32]; snprintf(n, sizeof n, "%s-%u", nom_type(x->connector_type), x->connector_type_id);
+		if (x->connection == DRM_MODE_CONNECTED && !strcmp(n, voulu))
+			for (int j = 0; j < x->count_modes; j++) {
+				const drmModeModeInfo *m = &x->modes[j];
+				printf("%dx%d%s@%u\n", m->hdisplay, m->vdisplay, (m->flags & DRM_MODE_FLAG_INTERLACE) ? "i" : "", m->vrefresh);
+			}
+		drmModeFreeConnector(x);
+	}
+	return 0;
+}
+
 int main(int argc, char **argv) {
-	if (argc < 2) { fprintf(stderr, "usage : pxl-mode LxH[i]@R [connecteur]\n"); return 1; }
+	if (argc < 2) { fprintf(stderr, "usage : pxl-mode LxH[i]@R [connecteur] | --liste [connecteur]\n"); return 1; }
+	if (!strcmp(argv[1], "--liste")) return lister(argc > 2 ? argv[2] : "HDMI-A-1");
 	int l, h, r; char i = 0;
 	if (sscanf(argv[1], "%dx%d%c@%d", &l, &h, &i, &r) != 4) { i = 0; if (sscanf(argv[1], "%dx%d@%d", &l, &h, &r) != 3) return 1; }
 	int entrelace = (i == 'i');

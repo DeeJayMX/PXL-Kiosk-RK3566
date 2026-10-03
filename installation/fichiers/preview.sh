@@ -5,21 +5,32 @@
 export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/pxl-preview}
 export LIBSEAT_BACKEND=seatd
 
-# Mode entrelacé (1080i50) : Weston ne sait pas le choisir (il prend le 1080p50) — pxl-mode le pose d'abord, et weston.ini
-# porte alors « mode=current » (installer.sh, /admin). Échec ⇒ on continue : Weston prendra le mode courant, quel qu'il soit.
-case "$SORTIE_MODE" in *i@*) /usr/local/lib/pxl-kiosk/pxl-mode "$SORTIE_MODE" "${SORTIE_NOM:-HDMI-A-1}" || true ;; esac
-# Entrelacé en PsF (ENTRELACE=psf, réglé dans /admin) : Weston patché se cadence à l'IMAGE (25 Hz en 1080i50) au lieu de
-# la trame — Chromium dessine 25 img/s, chaque image occupe ses deux trames (écran et flux propres en mouvement). Sans le
-# Weston patché, la variable est ignorée.
+# Le mode demandé doit exister sur l'écran branché : sinon Weston prend le mode PRÉFÉRÉ sans rien dire — 3840x2160p60
+# sur la TV du labo (mesuré le 03/10/2026 en demandant un 720p25 qu'elle ne déclare pas). Repli explicite et dit.
+MODE=$SORTIE_MODE
+LISTE=$(/usr/local/lib/pxl-kiosk/pxl-mode --liste "${SORTIE_NOM:-HDMI-A-1}" 2>/dev/null)
+if [ -n "$LISTE" ] && ! grep -qxF "$MODE" <<<"$LISTE"; then
+  for repli in 1280x720@50 1920x1080@50 1280x720@60 1920x1080@60; do grep -qxF "$repli" <<<"$LISTE" && break; done
+  echo "⚠ $MODE absent de l'écran branché — repli sur $repli"
+  MODE=$repli
+fi
+
+# Mode entrelacé (1080i50) : Weston ne sait pas le choisir (il prend le 1080p50) — pxl-mode le pose d'abord, et Weston
+# lit alors « mode=current ». Échec ⇒ on continue : Weston prendra le mode courant, quel qu'il soit.
+case "$MODE" in *i@*) /usr/local/lib/pxl-kiosk/pxl-mode "$MODE" "${SORTIE_NOM:-HDMI-A-1}" || true; WMODE=current ;; *) WMODE=$MODE ;; esac
+
+# Entrelacé en PsF (ENTRELACE=psf, défaut — décision d'Eliott, 03/10 ; réglé dans /admin) : Weston patché se cadence à
+# l'IMAGE (25 Hz en 1080i50) au lieu de la trame — Chromium dessine 25 img/s, chaque image occupe ses deux trames (écran
+# et flux propres en mouvement). Sans le Weston patché, la variable est ignorée ; en progressif, elle ne change rien.
 # ⚠ Et Weston y compose avec une fenêtre de 15 ms au lieu de 7 : à 7, une image sur ~5 ratait sa trame et retombait
 # sur une trame du bas (recalage, flux à 22-23 img/s) ; mesuré 03/10 : 7 ms → 43 glissements / 10 s, 12 → 3, 15 → 1 à
-# 3, 18 → 0 mais Chromium perd une image. Seulement en PsF : en 50i une trame dure 20 ms, 15 affameraient Chromium.
-INI=/etc/pxl-kiosk/weston.ini
-if [ "${ENTRELACE:-psf}" = psf ]; then   # PsF par défaut (décision d'Eliott, 03/10)
-  export PXL_PSF=1
-  INI="$XDG_RUNTIME_DIR/weston-psf.ini"
-  sed '/^repaint-window=/d; s/^\[core\]$/[core]\nrepaint-window=15/' /etc/pxl-kiosk/weston.ini > "$INI"
-fi
+# 3, 18 → 0 mais Chromium perd une image. SEULEMENT en entrelacé PsF : une image y dure 40 ms ; en 50p elle en dure 20,
+# et 15 ms de composition affameraient Chromium.
+# Weston lit une copie de weston.ini posée dans /run (mode effectif, fenêtre) : le fichier de /etc reste celui du réglage.
+[ "${ENTRELACE:-psf}" = psf ] && export PXL_PSF=1
+INI="$XDG_RUNTIME_DIR/weston.ini"
+FENETRE=; case "$MODE" in *i@*) [ "${ENTRELACE:-psf}" = psf ] && FENETRE=15 ;; esac
+sed "/^repaint-window=/d; s/^mode=.*/mode=$WMODE/${FENETRE:+; s/^\\[core\\]\$/[core]\\nrepaint-window=$FENETRE/}" /etc/pxl-kiosk/weston.ini > "$INI"
 
 weston --config="$INI" --log="$XDG_RUNTIME_DIR/weston.log" &
 WESTON=$!
