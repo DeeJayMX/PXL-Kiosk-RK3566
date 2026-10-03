@@ -106,7 +106,8 @@ apt_progres() { local t pct dernier=10 _; while IFS=: read -r t _ pct _; do case
 apt-get install -y -qq --no-install-recommends -o APT::Status-Fd=3 \
   chromium chromium-sandbox libv4l-rkmpp libv4l-0t64 v4l-utils librockchip-mpp1 rockchip-multimedia-config \
   weston seatd libgl1-mesa-dri libegl-mesa0 libgbm1 fonts-dejavu-core fonts-liberation chrony bluez \
-  plymouth plymouth-label gcc libc6-dev libdrm-dev librockchip-mpp-dev librga-dev >/dev/null 3> >(apt_progres)   # gcc + libdrm-dev : pxl-mode (1080i), compilé ici
+  plymouth plymouth-label gcc libc6-dev libdrm-dev librockchip-mpp-dev librga-dev \
+  dnsmasq-base usbmuxd iw >/dev/null 3> >(apt_progres)   # dnsmasq-base : point d'accès de secours ; usbmuxd : partage USB iPhone   # gcc + libdrm-dev : pxl-mode (1080i), compilé ici
 progres 60 "paquets système"
 apt-cache policy chromium | grep -q 'Installed:.*rkmpp' || meurs "chromium installé n'est pas celui du PPA (rkmpp)"
 
@@ -237,6 +238,25 @@ RestartSec=3
 [Install]
 WantedBy=multi-user.target
 EOF
+# Point d'accès de secours + partage de connexion USB (pxl-reseau-secours.sh ; réglé dans /admin : AP_MODE, AP_NOM,
+# AP_BANDE, mot de passe dans /etc/pxl-kiosk/ap.mdp). La veille ramène sur un Wi-Fi connu dès qu'il réapparaît.
+cat > /etc/systemd/system/pxl-ap-veille.service <<EOF
+[Unit]
+Description=PXL — Wi-Fi : retour sur un réseau connu, sinon point d'accès de secours
+After=NetworkManager.service
+[Service]
+Type=oneshot
+ExecStart=$LIB/pxl-reseau-secours.sh veille
+EOF
+cat > /etc/systemd/system/pxl-ap-veille.timer <<EOF
+[Unit]
+Description=PXL — veille du Wi-Fi de secours (toutes les 2 min)
+[Timer]
+OnBootSec=90
+OnUnitActiveSec=120
+[Install]
+WantedBy=timers.target
+EOF
 cat > /etc/systemd/system/pxl-sante.service <<EOF
 [Unit]
 Description=PXL — santé de la box en JSON (:$SANTE_PORT/sante)
@@ -366,6 +386,9 @@ gcc -O2 -I/usr/include/libdrm -o "$LIB/pxl-mode" "$ICI/fichiers/pxl-mode.c" -ldr
 # flux TurboHQ de la sortie HDMI : encodeur (MPP, sans copie), client TurboHQ embarqué, Weston patché
 gcc -O2 -o "$LIB/pxl-wb-enc" "$ICI/fichiers/pxl-wb-enc.c" -lrockchip_mpp -lrga || meurs "compilation de pxl-wb-enc impossible"
 install -m 755 "$ICI/fichiers/pxl-wb.sh" "$LIB/pxl-wb.sh"
+install -m 755 "$ICI/fichiers/pxl-reseau-secours.sh" "$LIB/pxl-reseau-secours.sh"
+# le pays de la radio : sans lui (« 00 »), les canaux permis en point d'accès sont les plus restreints
+echo "options cfg80211 ieee80211_regdom=FR" > /etc/modprobe.d/pxl-wifi-pays.conf
 install -m 755 "$ICI/fichiers/weston-pxl.sh" "$LIB/weston-pxl.sh"
 install -m 644 "$ICI/patches/weston-writeback-flux.patch" "$LIB/weston-writeback-flux.patch"
 # Le client TurboHQ (thq-publish.js) vient du dépôt TurboHQ, PRIVÉ : il n'est pas dans cette recette publique. Il est
@@ -423,7 +446,7 @@ fi
 dire "application depuis $APP_SOURCE…"; progres 65 "application d'habillage"
 /usr/local/bin/pxl-kiosk maj-app >/dev/null || meurs "copie de l'application impossible"
 if [ $EN_LIGNE = 0 ]; then
-  systemctl enable -q seatd pxl-serveur pxl-preview pxl-sante pxl-admin pxl-premier-demarrage
+  systemctl enable -q seatd pxl-serveur pxl-preview pxl-sante pxl-admin pxl-premier-demarrage pxl-ap-veille.timer
   dire "✅ image préparée — tout démarrera au premier démarrage de la box"; exit 0
 fi
 systemctl enable -q pxl-premier-demarrage
@@ -434,6 +457,9 @@ systemctl enable -q seatd pxl-serveur pxl-preview pxl-sante pxl-admin
 progres 68 "Weston (flux sans copie)"
 WESTON_PXL_PATCH="$ICI/patches/weston-writeback-flux.patch" bash "$ICI/fichiers/weston-pxl.sh" || dire "⚠️ Weston patché indisponible — flux TurboHQ désactivé"
 if [ "${WB_ACTIF:-0}" = 1 ]; then systemctl enable -q pxl-wb; else systemctl disable -q --now pxl-wb 2>/dev/null || true; fi
+# Wi-Fi de secours + partage USB : profils écrits maintenant (en « auto », la box reste sur son Wi-Fi connu)
+"$LIB/pxl-reseau-secours.sh" appliquer || dire "⚠️ point d'accès de secours non configuré"
+systemctl enable -q --now pxl-ap-veille.timer
 progres 75 "redémarrage des services"
 systemctl restart seatd pxl-serveur pxl-sante pxl-admin
 sleep 3

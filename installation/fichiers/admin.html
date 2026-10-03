@@ -290,6 +290,39 @@
     <div class="table"><table id="t-scan" class="cache"><thead><tr><th>Réseaux visibles</th><th>Signal</th><th>Sécurité</th></tr></thead><tbody id="wifi-scan"></tbody></table></div>
   </section>
 
+  <section data-onglet="reseau">
+    <h2>Point d'accès de secours <span class="aide" tabindex="0">❔<span class="aide-texte"><b>Auto</b> : quand aucun
+      Wi-Fi connu n'est visible, la box ouvre son propre réseau ; elle revient d'elle-même sur un Wi-Fi connu dès qu'il
+      réapparaît (vérifié toutes les 2 min, jamais tant qu'un appareil y est connecté). <b>Forcé</b> : toujours en point
+      d'accès, le Wi-Fi client est délaissé. <b>Coupé</b> : jamais.<br><br>Connecté au point d'accès : console sur
+      <code>http://10.42.0.1:8765</code>, admin sur <code>http://10.42.0.1:8791</code>. L'Ethernet n'est pas touché.</span></span></h2>
+    <div id="ap-etat" class="note"></div>
+    <form id="f-ap">
+      <div class="ligne">
+        <div><label for="ap-mode">Mode</label><select id="ap-mode">
+          <option value="auto">Auto — si aucun Wi-Fi connu</option><option value="force">Forcé</option><option value="off">Coupé</option></select></div>
+        <div><label for="ap-bande">Bande <span class="aide" tabindex="0">❔<span class="aide-texte">Une seule à la fois :
+          la radio n'a qu'un canal. <b>2,4 GHz</b> (canal 6) : meilleure portée, tous les appareils. <b>5 GHz</b> (canal
+          36) : moins encombrée, plus rapide, portée plus courte.</span></span></label><select id="ap-bande">
+          <option value="bg">2,4 GHz</option><option value="a">5 GHz</option></select></div>
+      </div>
+      <div class="ligne">
+        <div><label for="ap-nom">Nom du réseau</label><input id="ap-nom" maxlength="32"></div>
+        <div><label for="ap-mdp">Mot de passe <span class="aide" tabindex="0">❔<span class="aide-texte">8 caractères au
+          moins. Jamais réaffiché : laisser vide pour garder l'actuel.</span></span></label><input id="ap-mdp" type="password" autocomplete="new-password" maxlength="63"></div>
+      </div>
+      <div class="actions"><button class="principal" type="submit">Appliquer</button></div>
+    </form>
+  </section>
+
+  <section data-onglet="reseau">
+    <h2>Partage de connexion USB <span class="aide" tabindex="0">❔<span class="aide-texte">Brancher un téléphone en USB
+      et activer son partage de connexion : la box prend Internet dessus, en priorité sur l'Ethernet et le Wi-Fi ;
+      débranché, elle revient sur ses autres réseaux.<br><br><b>Android</b> : Réglages › Partage de connexion › Partage
+      USB. <b>iPhone</b> : Partage de connexion activé, puis « Se fier à cet ordinateur » au premier branchement.</span></span></h2>
+    <div id="usb-etat" class="note"></div>
+  </section>
+
   <section data-onglet="systeme">
     <h2>Heure <span class="aide" tabindex="0">❔<span class="aide-texte">Sans aucun serveur de temps joignable : la box prend l'heure de ce navigateur (à une fraction de seconde près).
       Vérifie d'abord que l'heure de cet appareil est juste.</span></span></h2>
@@ -422,6 +455,21 @@ function rendre() {
       : (fx.actif ? `<span class="${fx.service === 'active' ? 'ok' : 'ko'}">● ${fx.service === 'active' ? 'en service' : esc(fx.service)}</span>` : '○ arrêté')
         + (fx.stats ? ` · ${esc(fx.stats.replace(/^pxl-wb-enc : /, ''))}` : fx.actif && fx.derniere ? ` · ${esc(fx.derniere)}` : '')
         + (fx.actif ? ` · <a href="${esc(vue)}" target="_blank">regarder le flux</a>` : '');
+  }
+  // Point d'accès de secours + partage USB
+  const sc = E.secours;
+  if (sc) {
+    if (!$('#f-ap').dataset.touche) {
+      $('#ap-mode').value = sc.mode; $('#ap-bande').value = sc.bande; $('#ap-nom').value = sc.nom;
+      $('#ap-mdp').value = ''; $('#ap-mdp').placeholder = sc.mdp ? 'défini — laisser vide pour le garder' : 'aucun';
+    }
+    $('#ap-etat').innerHTML = !sc.present ? '<span class="ko">Wi-Fi de secours absent — refaire la mise à jour « box ».</span>'
+      : sc.actif ? `<span class="ok">● point d’accès « ${esc(sc.nom)} » ouvert</span> · ${sc.bande === 'a' ? '5' : '2,4'} GHz · ${sc.clients} appareil${sc.clients > 1 ? 's' : ''} connecté${sc.clients > 1 ? 's' : ''} · http://10.42.0.1:8765`
+      : `○ fermé · ${sc.mode === 'auto' ? 's’ouvrira si aucun Wi-Fi connu n’est visible' : sc.mode === 'off' ? 'coupé' : 'forcé, en cours d’ouverture'}`;
+    const noms = { rndis_host: 'Android', cdc_ncm: 'Android', cdc_ether: 'Android', ipheth: 'iPhone' };
+    $('#usb-etat').innerHTML = sc.usb.length ? sc.usb.map(u => `<span class="${u.passerelle ? 'ok' : 'moyen'}">● ${noms[u.pilote] || u.pilote}</span> · ${esc(u.interface)}`
+        + (u.adresse ? ` · ${esc(u.adresse)}` : ' · en attente d’adresse') + (u.passerelle ? ` · Internet par ${esc(u.passerelle)}` : '')).join('<br>')
+      : '○ aucun téléphone branché' + (sc.usbmuxd ? '' : ' · <span class="ko">usbmuxd absent (iPhone)</span>');
   }
   // Relais local
   const rl = E.relais;
@@ -646,6 +694,13 @@ $('#wb-chercher').addEventListener('click', ev => {
 $('#wb-trouves').addEventListener('click', ev => { const u = ev.target.dataset && ev.target.dataset.relais;
   if (u) { $('#wb-url').value = u; $('#f-wb').dataset.touche = 1; } });
 $('#f-relais').addEventListener('input', () => { $('#f-relais').dataset.touche = 1; });
+$('#f-ap').addEventListener('input', () => { $('#f-ap').dataset.touche = 1; });
+$('#f-ap').addEventListener('submit', ev => {
+  ev.preventDefault();
+  if ($('#ap-mode').value === 'force' && !confirm('Forcer le point d’accès ? Le Wi-Fi client de la box sera délaissé : si tu es connecté par lui, tu perdras cette page — reviens par « ' + $('#ap-nom').value + ' » (http://10.42.0.1:8791).')) return;
+  action(ev.submitter, async () => { const r = await appel('/api/secours', { mode: $('#ap-mode').value, bande: $('#ap-bande').value,
+    nom: $('#ap-nom').value, mdp: $('#ap-mdp').value }); delete $('#f-ap').dataset.touche; return r; }, 'Wi-Fi de secours appliqué');
+});
 $('#f-relais').addEventListener('submit', ev => {
   ev.preventDefault();
   action(ev.submitter, async () => { await appel('/api/relais', { actif: $('#rel-actif').checked ? '1' : '0', nom: $('#rel-nom').value,

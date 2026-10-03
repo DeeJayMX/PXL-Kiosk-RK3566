@@ -33,6 +33,15 @@ SORTIE_MODE=1280x720@25
 # TurboHQ propres en mouvement (Weston patché requis) ; 50i = une image par trame, fluide. Réglable dans /admin.
 ENTRELACE=psf
 
+# --- Wi-Fi de secours et partage de connexion USB ---------------------------------------------
+# Point d'accès quand aucun Wi-Fi connu n'est visible (auto), toujours (force), ou jamais (off). Bande : bg = 2,4 GHz
+# (canal 6), a = 5 GHz (canal 36) — une seule à la fois, la radio n'a qu'un canal. Nom vide = NOM_MACHINE.
+# Le mot de passe n'est PAS ici : /etc/pxl-kiosk/ap.mdp (0600), réglé dans /admin (tiré au sort s'il manque).
+# Le partage de connexion d'un téléphone branché en USB (Android, iPhone) est toujours pris en charge.
+AP_MODE=auto
+AP_NOM=
+AP_BANDE=bg
+
 # --- Santé -------------------------------------------------------------------------------------
 # Petit serveur JSON (température, charge, services, santé du serveur d'habillage)
 SANTE_PORT=8790

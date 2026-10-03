@@ -118,7 +118,8 @@ async function wifi() {
     run('nmcli', ['-t', '-f', 'IN-USE,SSID,SIGNAL', 'dev', 'wifi', 'list', '--rescan', 'no']),
   ]);
   const signal = Object.fromEntries(v.out.trim().split('\n').filter(Boolean).map(champs).map(([, s, sig]) => [s, +sig]));
-  const connus = c.out.trim().split('\n').filter(Boolean).map(champs).filter(x => x[2] === '802-11-wireless' && x[6])
+  // pxl-ap est le point d'accès de secours (section à part), pas un réseau à rejoindre
+  const connus = c.out.trim().split('\n').filter(Boolean).map(champs).filter(x => x[2] === '802-11-wireless' && x[6] && x[0] !== 'pxl-ap')
     .map(([nom, uuid, , auto, prio, actif]) => ({ nom, uuid, auto: auto === 'yes', priorite: +prio || 0, actif: actif === 'yes', signal: signal[nom] ?? null }))
     .sort((a, b) => b.priorite - a.priorite);
   return { connus };
@@ -293,6 +294,35 @@ async function regleWb(q) {
     : await run('systemctl', ['disable', '--now', 'pxl-wb']);
   exiger(r.ok, r.err);
   return {};
+}
+
+// ---------------------------------------------------------------- Wi-Fi de secours (point d'accès) et partage USB
+// pxl-reseau-secours.sh fait le travail (profils NetworkManager, veille, état) : l'admin ne règle que AP_* et le mot de
+// passe (/etc/pxl-kiosk/ap.mdp, 0600 — jamais réaffiché). ⚠ Passer en « force » coupe le Wi-Fi client : on applique en
+// DIFFÉRÉ (2 s) pour que la réponse parte avant — sinon l'opérateur relié par ce Wi-Fi ne saurait jamais ce qui s'est passé.
+const SECOURS = '/usr/local/lib/pxl-kiosk/pxl-reseau-secours.sh', AP_MDP = '/etc/pxl-kiosk/ap.mdp';
+const AP_MODES = ['auto', 'force', 'off'], AP_BANDES = ['bg', 'a'];
+async function secours() {
+  const c = lireConf(), e = await run(SECOURS, ['etat']);
+  let etat = {}; try { etat = JSON.parse(e.out); } catch { /* script absent ou muet */ }
+  return { present: existsSync(SECOURS), mode: AP_MODES.includes(c.AP_MODE) ? c.AP_MODE : 'auto',
+    nom: c.AP_NOM || c.NOM_MACHINE || 'PXLnode', bande: c.AP_BANDE === 'a' ? 'a' : 'bg', mdp: !!lire(AP_MDP),
+    actif: !!etat.actif, clients: etat.clients | 0, usb: etat.usb || [], usbmuxd: !!etat.usbmuxd };
+}
+async function regleSecours(q) {
+  exiger(existsSync(SECOURS), 'Wi-Fi de secours absent : refaire la mise à jour « box »');
+  const mode = q.mode, bande = q.bande, nom = String(q.nom || '').trim(), mdp = String(q.mdp || '');
+  exiger(AP_MODES.includes(mode), 'mode inconnu'); exiger(AP_BANDES.includes(bande), 'bande inconnue');
+  exiger(/^[\x20-\x7e]{1,32}$/.test(nom) && !/[\\"]/.test(nom), 'nom du réseau invalide (1 à 32 caractères simples)');
+  exiger(mdp === '' || (/^[\x20-\x7e]{8,63}$/.test(mdp)), 'mot de passe : 8 à 63 caractères');
+  let t = readFileSync(CONF, 'utf8');
+  for (const [k, v] of [['AP_MODE', mode], ['AP_NOM', `"${nom}"`], ['AP_BANDE', bande]]) t = poserLigne(t, k, v);
+  ecrireAtomique(CONF, t);
+  if (mdp) { writeFileSync(AP_MDP + '.part', mdp, { mode: 0o600 }); chmodSync(AP_MDP + '.part', 0o600); renameSync(AP_MDP + '.part', AP_MDP); }
+  await run('systemctl', ['reset-failed', 'pxl-ap-appliquer.service']);
+  const r = await run('systemd-run', ['--quiet', '--unit=pxl-ap-appliquer', '--on-active=2', SECOURS, 'appliquer']);
+  exiger(r.ok, r.err);
+  return mode === 'force' ? { avertissement: 'Point d’accès forcé dans 2 s : le Wi-Fi client de la box est délaissé — se connecter à « ' + nom + ' » (http://10.42.0.1:8791).' } : {};
 }
 
 // ---------------------------------------------------------------- relais TurboHQ de la box (service pxl-relais)
@@ -564,7 +594,7 @@ async function api(req, u, q) {
   const p = u.pathname;
   if (p === '/api/etat') {
     const [r, e, w, h, m, s, v] = await Promise.all([reseau(), ethernet(), wifi(), heure(), machine(), surveillance(), versions()]);
-    return { reseau: r, ethernet: e, wifi: w, heure: h, machine: m, materiel: materiel(), surveillance: s, versions: v, mode: mode(), ecran: await ecran(), wb: await wb(), relais: await relais(), retour: retourEnCours(), retour_s: RETOUR_S };
+    return { reseau: r, ethernet: e, wifi: w, heure: h, machine: m, materiel: materiel(), surveillance: s, versions: v, mode: mode(), ecran: await ecran(), wb: await wb(), relais: await relais(), secours: await secours(), retour: retourEnCours(), retour_s: RETOUR_S };
   }
   if (p === '/api/wifi/scan') {
     const r = await run('nmcli', ['-t', '-f', 'SSID,SIGNAL,SECURITY', 'dev', 'wifi', 'list', '--rescan', 'yes'], { timeout: 30000 });
@@ -622,6 +652,7 @@ async function actionPost(p, q) {
     case '/api/ecran': return regleEcran(q);
     case '/api/wb': return regleWb(q);
     case '/api/relais': return regleRelais(q);
+    case '/api/secours': return regleSecours(q);
     case '/api/relais/decouverte': return { relais: await decouvrir() };
     // mises à jour depuis GitHub (maj.mjs) — une seule à la fois
     case '/api/maj/verifier': return uneMaj(() => maj.verifier(q.cible));
