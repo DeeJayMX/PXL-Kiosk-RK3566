@@ -15,7 +15,7 @@ case "$SORTIE_MODE" in *i@*) /usr/local/lib/pxl-kiosk/pxl-mode "$SORTIE_MODE" "$
 # sur une trame du bas (recalage, flux à 22-23 img/s) ; mesuré 03/10 : 7 ms → 43 glissements / 10 s, 12 → 3, 15 → 1 à
 # 3, 18 → 0 mais Chromium perd une image. Seulement en PsF : en 50i une trame dure 20 ms, 15 affameraient Chromium.
 INI=/etc/pxl-kiosk/weston.ini
-if [ "${ENTRELACE:-50i}" = psf ]; then
+if [ "${ENTRELACE:-psf}" = psf ]; then   # PsF par défaut (décision d'Eliott, 03/10)
   export PXL_PSF=1
   INI="$XDG_RUNTIME_DIR/weston-psf.ini"
   sed '/^repaint-window=/d; s/^\[core\]$/[core]\nrepaint-window=15/' /etc/pxl-kiosk/weston.ini > "$INI"

@@ -212,7 +212,7 @@ const MODES_HDMI = ['1280x720@25', '1280x720@50', '1920x1080@25', '1920x1080@50'
 // image tient ses deux trames, donc écran ET flux writeback propres en mouvement — preview.sh pose PXL_PSF=1).
 const ENTRELACES = ['50i', 'psf'];
 const ecran = () => { const c = lireConf();
-  return { mode: c.SORTIE_MODE || null, modes: MODES_HDMI, entrelace: ENTRELACES.includes(c.ENTRELACE) ? c.ENTRELACE : '50i', entrelaces: ENTRELACES }; };
+  return { mode: c.SORTIE_MODE || null, modes: MODES_HDMI, entrelace: ENTRELACES.includes(c.ENTRELACE) ? c.ENTRELACE : 'psf', entrelaces: ENTRELACES }; };
 const poserLigne = (texte, cle, valeur) => { const re = new RegExp(`^\\s*${cle}=.*$`, 'm'), l = `${cle}=${valeur}`;
   return re.test(texte) ? texte.replace(re, l) : texte.replace(/\n?$/, '\n') + l + '\n'; };
 const ecrireAtomique = (f, t) => { writeFileSync(f + '.part', t); renameSync(f + '.part', f); };
