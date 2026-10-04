@@ -1,4 +1,4 @@
-// Santé de la box, en JSON, pour la surveillance à distance (tailnet). Node ≥ 22, aucune dépendance.
+// Santé de la box, en JSON, pour la surveillance à distance (PXLnet). « tailscaled » s'y lit « pxlnet » (04/10, Eliott). Node ≥ 22, aucune dépendance.
 //   GET /sante      → JSON complet
 //   GET /sante.txt  → résumé lisible (curl depuis un terminal)
 // Lecture seule : ce serveur ne commande rien.
@@ -26,8 +26,8 @@ function services() {
   for (const s of SERVICES) {
     try {
       const o = execFileSync('systemctl', ['show', s, '-p', 'ActiveState,SubState,NRestarts,ActiveEnterTimestamp'], { encoding: 'utf8' });
-      r[s] = Object.fromEntries(o.trim().split('\n').map(l => l.split(/=(.*)/s).slice(0, 2)));
-    } catch { r[s] = null; }
+      r[s === 'tailscaled' ? 'pxlnet' : s] = Object.fromEntries(o.trim().split('\n').map(l => l.split(/=(.*)/s).slice(0, 2)));
+    } catch { r[s === 'tailscaled' ? 'pxlnet' : s] = null; }
   }
   return r;
 }

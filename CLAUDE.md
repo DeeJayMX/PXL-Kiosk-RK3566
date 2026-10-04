@@ -212,3 +212,11 @@ Voir `README.md` pour la recette et `docs/README.md` pour l'index du dossier.
   disque qui porte `/` (`stat('/').dev` → `/sys/dev/block/M:m` → disque parent de la partition) et son type
   (`device/type` : MMC → « eMMC », SD → « Carte SD ») titre les deux cases. Mesuré sur la box : `179:2` → `mmcblk2`, MMC.
   Démarrée sur la SD de secours, la case redirait « Carte SD » d'elle-même.
+- **/admin : logo PixelMasters et « © PixelMasters 2026 », et PXLnet au lieu de Tailscale** (04/10, v1.23.0, Eliott : *« pas
+  de mention de Tailscale dans toutes les interfaces »*). Logo = le tracé de l'habillage (`pages/images/logo-pxl.svg`),
+  **en ligne** dans la page (l'admin ne sert aucun fichier à côté) : en-tête, écran de connexion, pied de page avec la
+  version. PXLnet : le SERVICE garde son nom (`tailscaled`), seul l'AFFICHÉ change — `pxlnet()` dans `admin.mjs` (noms
+  de services, interfaces `tailscale0` → `PXLnet0`, routes, journaux), carte réseau « PXLnet » (champ `pxlnet` de
+  `/api/etat`), textes d'aide. `sante.mjs` rend la clé `pxlnet`. Vérifié dans Chromium avec un état réel : 0 erreur JS,
+  « tailscale » absent du texte de la page. Les viewers TurboHQ ne sont PAS concernés (décision d'Eliott : « dans le viewer
+  on s'en fout »).

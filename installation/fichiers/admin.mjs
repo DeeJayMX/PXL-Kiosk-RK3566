@@ -30,6 +30,9 @@ const RETOUR_S = 90;                       // délai pour confirmer un changemen
 const NTP_LOCAUX = '/etc/chrony/sources.d/pxl-local.sources';
 const NM_DIR = '/etc/NetworkManager/system-connections';
 const PROFIL_ETH = 'pxl-ethernet';
+// PXLnet (04/10, Eliott : « pas de mention de Tailscale dans toutes les interfaces ») : le service système garde son nom
+// (`tailscaled`) ; tout ce que la page AFFICHE passe par ici — noms de services, journaux, carte réseau.
+const pxlnet = t => String(t).replace(/tailscaled?/gi, m => /d$/i.test(m) ? 'pxlnet' : 'PXLnet');
 const JOURNAUX = ['pxl-maj-box', 'pxl-serveur', 'pxl-preview', 'pxl-admin', 'pxl-sante', 'chrony', 'NetworkManager', 'tailscaled', 'pxl-satellite'];
 const RELANCABLES = ['pxl-serveur', 'pxl-preview'];
 
@@ -144,14 +147,14 @@ function lireNtpLocaux() {
 async function reseau() {
   const [a, r, d] = await Promise.all([run('ip', ['-j', '-4', 'addr']), run('ip', ['-j', 'route', 'show', 'default']), run('resolvectl', ['dns'])]);
   let adresses = [], routes = [];
-  try { adresses = JSON.parse(a.out).filter(i => i.ifname !== 'lo').map(i => ({ nom: i.ifname, etat: i.operstate,
+  try { adresses = JSON.parse(a.out).filter(i => i.ifname !== 'lo').map(i => ({ nom: pxlnet(i.ifname), etat: i.operstate,
     adresses: (i.addr_info || []).map(x => `${x.local}/${x.prefixlen}`) })); } catch {}
-  try { routes = JSON.parse(r.out).map(x => ({ via: x.gateway, dev: x.dev, metrique: x.metric })); } catch {}
+  try { routes = JSON.parse(r.out).map(x => ({ via: x.gateway, dev: pxlnet(x.dev), metrique: x.metric })); } catch {}
   const dns = [...new Set(d.out.split('\n').flatMap(l => (l.split(':')[1] || '').trim().split(/\s+/)).filter(estIp))];
   let internet = false;
   try { internet = (await fetch('http://connectivity-check.ubuntu.com/', { signal: AbortSignal.timeout(3000) })).status === 204; } catch {}
   const ts = await run('tailscale', ['ip', '-4'], { timeout: 4000 });
-  return { adresses, routes, dns, internet, tailscale: ts.ok ? ts.out.trim() : null };
+  return { adresses, routes, dns, internet, pxlnet: ts.ok ? ts.out.trim() : null };
 }
 // ---------------------------------------------------------------- versions : chaque morceau dit ce qu'il est
 // recette (ce dépôt, installation/VERSION, recopiée par installer.sh dans /etc/pxl-kiosk/version), application
@@ -508,7 +511,7 @@ async function machine() {
   const etats = {};
   for (const s of [...RELANCABLES, 'pxl-sante', 'pxl-facade', 'pxl-telecommande', 'pxl-relais', 'seatd', 'chrony', 'tailscaled', 'pxl-admin']) {
     const r = await run('systemctl', ['show', s, '-p', 'ActiveState,NRestarts']);
-    etats[s] = Object.fromEntries(r.out.trim().split('\n').map(l => l.split(/=(.*)/s).slice(0, 2)));
+    etats[pxlnet(s)] = Object.fromEntries(r.out.trim().split('\n').map(l => l.split(/=(.*)/s).slice(0, 2)));
   }
   return { nom: hostname(), depuis_s: Math.round(uptime()), image: lire('/etc/pxl-kiosk/image'), services: etats };
 }
@@ -731,7 +734,7 @@ async function api(req, u, q) {
   if (p === '/api/journal') {
     exiger(JOURNAUX.includes(q.u), 'journal inconnu');
     const r = await run('journalctl', ['-u', q.u, '-n', '200', '--no-pager', '-o', 'short-iso']);
-    return { texte: r.out || r.err };
+    return { texte: pxlnet(r.out || r.err) };
   }
   if (p === '/api/maj') return enRefus(maj.etat());
   if (req.method !== 'POST') throw new Refus('méthode');
