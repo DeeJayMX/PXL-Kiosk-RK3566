@@ -14,12 +14,12 @@
 // Écritures sur la carte SD : seulement quand on ENREGISTRE un réglage (décision du 02/10/2026 : le minimum d'écritures).
 import { createServer } from 'node:http';
 import { execFile } from 'node:child_process';
-import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync, renameSync, chmodSync, readdirSync, statSync, createReadStream } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync, renameSync, chmodSync, readdirSync, statSync, realpathSync, createReadStream } from 'node:fs';
 import { randomBytes, randomUUID, scryptSync, timingSafeEqual, createHmac, createHash } from 'node:crypto';
 import { hostname, uptime, release, networkInterfaces } from 'node:os';
 import dgram from 'node:dgram';
 import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+import { dirname, join, basename } from 'node:path';
 import * as maj from './maj.mjs';
 
 const ICI = dirname(fileURLToPath(import.meta.url));
@@ -539,20 +539,32 @@ function materiel() {
     gpu_mhz: (freq('/sys/class/devfreq/fde60000.gpu/cur_freq') ?? 0) / 1e6,
   };
 }
-// ---------------------------------------------------------------- surveillance : carte SD, liaisons, HDMI, preview
+// ---------------------------------------------------------------- surveillance : disque système, liaisons, HDMI, preview
 // Écritures sur la carte depuis le démarrage (champ 7 de /sys/block/<dev>/stat, en secteurs de 512 o), et rythme moyen
 // sur les 30 dernières minutes : c'est le témoin de la règle « le minimum d'écritures » (02/10). ⚠️ Pas sur une fenêtre
 // courte : ext4 (commit=600) n'écrit que par paquets toutes les 10 min, une fenêtre de quelques secondes affiche 0 ou un pic.
+// 🔴 v1.22.2 (04/10, Eliott) : le disque était écrit en dur, `mmcblk0` = la carte SD. Depuis le passage sur l'eMMC
+// (`mmcblk2`) et la SD retirée, la case ne mesurait plus rien. On prend le disque qui porte `/` (son numéro de
+// périphérique → /sys/dev/block, puis le disque parent de la partition), et son type dit eMMC ou carte SD.
+function disqueRacine() {
+  try {
+    const d = statSync('/').dev, maj = Math.floor(d / 256) & 0xfff, min = (d & 0xff) | ((Math.floor(d / 4096)) & ~0xff);
+    const chemin = realpathSync(`/sys/dev/block/${maj}:${min}`);
+    return existsSync(`${chemin}/partition`) ? basename(dirname(chemin)) : basename(chemin);
+  } catch { return 'mmcblk0'; }
+}
+const DISQUE = disqueRacine();
 const echantillons = [];   // { t, octets }, relevés à chaque lecture de l'état, gardés 30 min
 function carteSd() {
-  const dev = 'mmcblk0', st = (lire(`/sys/block/${dev}/stat`) || '').split(/\s+/);
+  const dev = DISQUE, st = (lire(`/sys/block/${dev}/stat`) || '').split(/\s+/);
   const octets = +st[6] * 512, t = Date.now();
   echantillons.push({ t, octets });
   while (echantillons.length > 1 && t - echantillons[1].t >= 30 * 60e3) echantillons.shift();
   const ancien = echantillons[0], fenetre = t - ancien.t;
   return { ecrit_o: octets, depuis_s: Math.round(uptime()),
     rythme_o_min: fenetre >= 60e3 ? Math.max(0, octets - ancien.octets) / (fenetre / 60e3) : null, fenetre_min: Math.round(fenetre / 60e3),
-    fabrication: lire(`/sys/block/${dev}/device/date`), nom: lire(`/sys/block/${dev}/device/name`) };
+    fabrication: lire(`/sys/block/${dev}/device/date`), nom: lire(`/sys/block/${dev}/device/name`),
+    disque: dev, type: { MMC: 'eMMC', SD: 'Carte SD' }[lire(`/sys/block/${dev}/device/type`)] || 'Disque système' };
 }
 // échantillon toutes les 5 min même sans page ouverte : le rythme est disponible dès la première visite
 setInterval(() => { if (process.argv.length <= 2) carteSd(); }, 5 * 60e3).unref();

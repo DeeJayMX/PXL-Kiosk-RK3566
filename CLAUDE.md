@@ -207,3 +207,8 @@ Voir `README.md` pour la recette et `docs/README.md` pour l'index du dossier.
   `maj.mjs` ajoute `companion-module-urban-trail/`, `outils/` (sauf `outils/zip.js`, chargé par le serveur), `.github/` et
   `.claude/` aux chemins qui n'obligent pas à relancer le serveur — relancer renvoie l'antenne au PVW et perd les
   préparations remplacées (vu en livrant le module 1.8.2 en pleine répétition).
+- **/admin › États › Surveillance : le disque système, plus « la carte SD »** (04/10, v1.22.2, Eliott) — le disque était
+  écrit en dur (`mmcblk0`, la SD) ; depuis l'eMMC et la SD retirée, la case ne mesurait plus rien. `admin.mjs` prend le
+  disque qui porte `/` (`stat('/').dev` → `/sys/dev/block/M:m` → disque parent de la partition) et son type
+  (`device/type` : MMC → « eMMC », SD → « Carte SD ») titre les deux cases. Mesuré sur la box : `179:2` → `mmcblk2`, MMC.
+  Démarrée sur la SD de secours, la case redirait « Carte SD » d'elle-même.

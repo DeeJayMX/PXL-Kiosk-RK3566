@@ -299,7 +299,7 @@
   </section>
 
   <section data-onglet="etat">
-    <h2>Surveillance <span class="aide" tabindex="0">❔<span class="aide-texte">La carte SD ne devrait presque plus rien recevoir (journal en mémoire) : un rythme qui monte en continu
+    <h2>Surveillance <span class="aide" tabindex="0">❔<span class="aide-texte">Le disque système (eMMC, ou carte SD si la box démarre sur la carte de secours) ne devrait presque plus rien recevoir (journal en mémoire) : un rythme qui monte en continu
       signale un programme qui écrit. Images par seconde : mesurées dans la page affichée, sur une seconde.</span></span></h2>
     <div class="grille" id="surv"></div>
   </section>
@@ -626,8 +626,8 @@ function rendre() {
   const ips = sv.preview.ips, classeIps = ips == null ? 'ko' : !hz ? '' : ips >= hz * .9 ? 'ok' : ips >= hz * .7 ? 'moyen' : 'ko';
   const wf = sv.wifi, sig = wf && wf.signal_dbm, classeSig = sig == null ? '' : sig >= -60 ? 'ok' : sig >= -72 ? 'moyen' : 'ko';
   $('#surv').innerHTML =
-    case_('Carte SD — écrit depuis le démarrage', `${oct(sv.sd.ecrit_o)}`)
-    + case_('Carte SD — rythme moyen', sv.sd.rythme_o_min == null ? 'disponible après une minute' : `${oct(sv.sd.rythme_o_min)} / min <small style="display:inline;color:var(--doux)">sur ${sv.sd.fenetre_min} min</small>`,
+    case_(`${esc(sv.sd.type || 'Carte SD')} — écrit depuis le démarrage`, `${oct(sv.sd.ecrit_o)}`)
+    + case_(`${esc(sv.sd.type || 'Carte SD')} — rythme moyen`, sv.sd.rythme_o_min == null ? 'disponible après une minute' : `${oct(sv.sd.rythme_o_min)} / min <small style="display:inline;color:var(--doux)">sur ${sv.sd.fenetre_min} min</small>`,
       sv.sd.rythme_o_min == null ? '' : sv.sd.rythme_o_min < 64 * 1024 ? 'ok' : sv.sd.rythme_o_min < 1024 ** 2 ? 'moyen' : 'ko')
     + case_('Wi-Fi', wf ? `${esc(wf.ssid)} · ${sig} dBm` : 'non connecté', wf ? classeSig : 'moyen')
     + case_('Wi-Fi — débit', wf ? `↓ ${nb(wf.reception_mbit)} · ↑ ${nb(wf.emission_mbit)} Mbit/s · ${esc(wf.bande || '')}` : '—')
