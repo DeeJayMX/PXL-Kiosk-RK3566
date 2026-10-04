@@ -114,7 +114,11 @@ export async function verifier(c) {
   const fichiers = depuis ? (await git(c, ['diff', '--name-only', depuis, cible])).out.trim().split('\n').filter(Boolean) : null;
   // app : ne toucher que pages/ (et la doc, et VERSION — relue par le serveur) n'oblige pas à relancer le serveur — les
   // pages se rechargent seules
-  const relance = c === 'app' ? (fichiers == null || fichiers.some(f => !f.startsWith('pages/') && !/\.md$/.test(f) && !f.startsWith('docs/') && f !== 'VERSION')) : true;
+  // (04/10) ni le module Companion (construit par GitHub, servi depuis etat-local/), ni les outils, ni la CI ne sont lus par
+  // le serveur : les relancer renverrait l'antenne au PVW pour rien (vu en livrant le module 1.8.2 en pleine répétition)
+  const sansRelance = f => f.startsWith('pages/') || /\.md$/.test(f) || f.startsWith('docs/') || f === 'VERSION'
+    || f.startsWith('companion-module-urban-trail/') || (f.startsWith('outils/') && f !== 'outils/zip.js') || f.startsWith('.github/') || f.startsWith('.claude/');
+  const relance = c === 'app' ? (fichiers == null || fichiers.some(f => !sansRelance(f))) : true;
   const v = { commit: tete, version: await versionDe(c, cible), a_jour: depuis === tete, journal: journal ? journal.split('\n').slice(0, 30) : [],
     fichiers: fichiers ? fichiers.length : null, relance, le: new Date().toISOString() };
   if (c === 'app') { try { const m = await moduleCompanion(); v.module = m && (m.version || m.erreur) || null; } catch (e) { v.module = 'erreur : ' + e.message; } }

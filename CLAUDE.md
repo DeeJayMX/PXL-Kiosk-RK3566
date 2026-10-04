@@ -203,3 +203,7 @@ Voir `README.md` pour la recette et `docs/README.md` pour l'index du dossier.
   par l'admin lui-même : marche même serveur d'habillage arrêté) et **Rechercher une nouvelle version** (= `maj verifier app`,
   qui ramène la branche `companion-module`). Prévient si l'habillage installé porte une autre version du module que le
   `.tgz` récupéré. Page rendue dans Chromium (module présent / absent, 0 erreur JS, l'appel part bien).
+- **Mise à jour de l'habillage sans redémarrage quand seuls le module Companion / les outils / la CI changent** (04/10, v1.22.1) :
+  `maj.mjs` ajoute `companion-module-urban-trail/`, `outils/` (sauf `outils/zip.js`, chargé par le serveur), `.github/` et
+  `.claude/` aux chemins qui n'obligent pas à relancer le serveur — relancer renvoie l'antenne au PVW et perd les
+  préparations remplacées (vu en livrant le module 1.8.2 en pleine répétition).
