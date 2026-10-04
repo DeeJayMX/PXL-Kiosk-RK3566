@@ -41,7 +41,10 @@ case "$MODE" in *i@*) /usr/local/lib/pxl-kiosk/pxl-mode "$MODE" "${SORTIE_NOM:-H
 [ "${ENTRELACE:-psf}" = psf ] && export PXL_PSF=1
 INI="$XDG_RUNTIME_DIR/weston.ini"
 FENETRE=; case "$MODE" in *i@*) [ "${ENTRELACE:-psf}" = psf ] && FENETRE=15 ;; esac
-sed "/^repaint-window=/d; s/^mode=.*/mode=$WMODE/${FENETRE:+; s/^\\[core\\]\$/[core]\\nrepaint-window=$FENETRE/}" /etc/pxl-kiosk/weston.ini > "$INI"
+# 🔴 max-bpc=8 : la VRAIE cause de l'écran noir (04/10 au soir, prouvée par un espion libdrm sur le commit refusé) — Weston
+# recopie la valeur courante de la propriété « max bpc » du connecteur, qui vaut 0 après un démarrage alors que le noyau
+# n'accepte que 8..16 : tout le commit est refusé (EINVAL), Weston ne réessaie pas. Le lien HDMI est en RGB 8 bits.
+sed "/^repaint-window=/d; /^max-bpc=/d; s/^mode=.*/mode=$WMODE\nmax-bpc=8/${FENETRE:+; s/^\\[core\\]\$/[core]\\nrepaint-window=$FENETRE/}" /etc/pxl-kiosk/weston.ini > "$INI"
 
 weston --config="$INI" --log="$XDG_RUNTIME_DIR/weston.log" &
 WESTON=$!

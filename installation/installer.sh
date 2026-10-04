@@ -180,6 +180,7 @@ cursor-size=1
 [output]
 name=$SORTIE_NOM
 mode=$(case "$SORTIE_MODE" in *i@*|auto) echo current ;; *) echo "$SORTIE_MODE" ;; esac)
+max-bpc=8
 EOF
 { echo "HOST=$APP_HOST"; echo "PORT=$APP_PORT"; for e in $APP_ENV; do echo "$e"; done; } > /etc/pxl-kiosk/serveur.env
 

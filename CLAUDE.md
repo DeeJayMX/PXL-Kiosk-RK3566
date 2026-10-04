@@ -135,4 +135,13 @@ Voir `README.md` pour la recette et `docs/README.md` pour l'index du dossier.
   Correctifs (v1.16.2) : `preview.sh` attend 1 s après pxl-mode, puis lit le journal de Weston 3 s après son démarrage ;
   refus ⇒ sortie, systemd relance (≈ 10 s). Mesuré : 6 relances, 6 images, dont 1 rattrapée seule. Et la garde HDMI
   (v1.16.1) relance aussi quand le Video Port est actif sans AUCUN plan actif.
+- ✅ **CAUSE RÉELLE de l'écran noir trouvée (04/10, 21 h 20) — ce n'était PAS une course** (la ligne ci-dessus se trompait
+  de mécanisme ; elle reste, c'est le raisonnement qui serait refait). Un **espion libdrm** (`LD_PRELOAD`, journal de chaque
+  `drmModeAtomicAddProperty`) a montré le commit refusé : Weston envoie au connecteur `max bpc = 0`, recopie de la valeur
+  courante, alors que la plage est **8..16** ⇒ EINVAL silencieux sur tout le commit. La valeur vaut 0 après un démarrage ;
+  « ça marchait l'après-midi » parce qu'un essai précédent (Weston en mode explicite) l'avait laissée valide.
+  Correctif (v1.16.3) : `max-bpc=8` dans `[output]` (`installer.sh` + `preview.sh` le force dans la copie `/run`). Mesuré :
+  le commit passe (`ret=0`, `max bpc` = 8 envoyé). Le lien HDMI est en RGB 8 bits : la valeur ne retire rien.
+  Les deux filets (relance si refus, garde « Video Port sans plan ») restent.
+  ⚠️ Leçon : un `--sleep` qui « aide une fois sur deux » n'a rien prouvé — lire ce que le programme ENVOIE au noyau.
 
