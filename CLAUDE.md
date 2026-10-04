@@ -146,7 +146,7 @@ Voir `README.md` pour la recette et `docs/README.md` pour l'index du dossier.
   ⚠️ Leçon : un `--sleep` qui « aide une fois sur deux » n'a rien prouvé — lire ce que le programme ENVOIE au noyau.
 
 
-## Signal HDMI en YUV 4:2:2 / 10 bits (05/10/2026, v1.17.0)
+## Signal HDMI en YUV 4:2:2 / 10 bits (04/10/2026, v1.17.0)
 
 - Demande d'Eliott : *« Le SDI ! et le 10 bits est mieux traité dans un environnement mélangeur. »* Réglé dans /admin ›
   Écran (`LIEN_FORMAT` rgb | ycbcr422 | ycbcr444 | auto, `LIEN_PROFONDEUR` 8 | 10). **Défaut : RGB 8 bits** (décision

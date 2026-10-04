@@ -25,7 +25,7 @@ if [ -n "$LISTE" ] && ! grep -qxF "$MODE" <<<"$LISTE"; then
   MODE=$repli
 fi
 
-# Format du LIEN HDMI (05/10/2026, demande d'Eliott : 4:2:2 10 bits pour un convertisseur SDI / un mélangeur) — posé AVANT
+# Format du LIEN HDMI (04/10/2026, demande d'Eliott : 4:2:2 10 bits pour un convertisseur SDI / un mélangeur) — posé AVANT
 # tout modeset, Weston ne connaît pas ces propriétés Rockchip et ne les touche pas. Chromium dessine toujours en RGB 8 bits :
 # c'est le VOP2 qui convertit vers le lien, sans coût. Le pilote retombe en RGB / 8 bits si l'écran ne déclare pas le
 # format demandé — sans erreur : /admin affiche le bus_format réellement émis. Défaut : RGB 8 bits (le réglage d'origine).

@@ -223,7 +223,7 @@ const ENTRELACES = ['50i', 'psf'];
 // Les modes que l'écran BRANCHÉ déclare (pxl-mode --liste) : un mode absent n'est pas refusé — on règle parfois la box
 // pour la TV du lieu —, mais il est signalé, et preview.sh se replie explicitement (sans quoi Weston prendrait le mode
 // préféré de l'écran : 3840x2160p60 sur la TV du labo, mesuré le 03/10/2026 sur un 720p25 qu'elle ne déclare pas).
-// Format du LIEN HDMI (05/10/2026, Eliott : « Le SDI ! et le 10 bits est mieux traité dans un environnement mélangeur »).
+// Format du LIEN HDMI (04/10/2026, Eliott : « Le SDI ! et le 10 bits est mieux traité dans un environnement mélangeur »).
 // Posé par preview.sh (pxl-mode --couleur) avant tout modeset. Le pilote retombe EN SILENCE en RGB / 8 bits si l'écran ne
 // déclare pas le format : on affiche donc le bus_format RÉELLEMENT émis, lu dans le summary du VOP2 (la seule vérité).
 // « auto » = choix du pilote selon l'EDID (4:4:4 › 4:2:2 › RGB) : il varie d'un écran à l'autre — défaut : RGB 8 bits.

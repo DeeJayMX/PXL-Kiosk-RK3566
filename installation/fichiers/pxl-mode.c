@@ -6,7 +6,7 @@
 //   pxl-mode --couleur FORMAT PROF [HDMI-A-1]   format du LIEN HDMI : rgb | ycbcr444 | ycbcr422 | ycbcr420 | auto,
 //                                      profondeur 8 | 10 | auto. Ne pose AUCUN mode : vaut pour le prochain modeset.
 //
-// ⚠ --couleur (05/10/2026) : propriétés Rockchip « color_format » / « color_depth » du connecteur. Weston ne les connaît
+// ⚠ --couleur (04/10/2026) : propriétés Rockchip « color_format » / « color_depth » du connecteur. Weston ne les connaît
 // pas et ne les touche pas ; le pilote les range dans SA structure (hdmi->hdmi_output / colordepth, lu dans
 // dw_hdmi-rockchip.c, rockchip-linux develop-6.1) et les relit à CHAQUE modeset — d'où l'appel AVANT pxl-mode/Weston.
 // Le pilote ne fait qu'ESSAYER : un format absent de l'EDID de l'écran retombe en RGB, un 10 bits sans « deep color »
