@@ -17,7 +17,8 @@ case "${1:-etat}" in
       [ -d "$APP_SOURCE" ] || { echo "APP_SOURCE introuvable : $APP_SOURCE"; exit 1; }
       # etat-local/ appartient à la box (état de la régie) : jamais écrasé par une mise à jour. pages/photos/ non plus :
       # les photos des coureurs ne sont pas dans le dépôt (données personnelles), elles se posent sur la box à part.
-      rsync -a --delete --exclude .git --exclude etat-local --exclude pages/photos --exclude node_modules "$APP_SOURCE/" "$APP_DIR/"
+      # Et les listes de la prod (donnees/engages-*.csv), hors git pour la même raison : sans l'exception, --delete les effaçait.
+      rsync -a --delete --exclude .git --exclude etat-local --exclude pages/photos --exclude 'donnees/engages-*.csv' --exclude node_modules "$APP_SOURCE/" "$APP_DIR/"
     fi
     chown -R pxl:pxl "$APP_DIR"
     if [ -d /run/systemd/system ]; then systemctl restart pxl-serveur && echo "serveur relancé"; fi ;;

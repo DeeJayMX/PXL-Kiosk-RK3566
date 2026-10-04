@@ -6,7 +6,8 @@
 // lecture seule. La clé privée ne quitte jamais la box ; on colle la clé publique dans GitHub → dépôt → Settings →
 // Deploy keys. Aucun jeton à taper ni à faire transiter.
 // Les clones vivent dans /opt/pxl-depots (petits : quelques Mo). L'application est RECOPIÉE de son clone vers
-// APP_DIR, en gardant ce qui appartient à la box : etat-local/ (l'état de la régie) et pages/photos/.
+// APP_DIR, en gardant ce qui appartient à la box : etat-local/ (l'état de la régie), pages/photos/ et les listes de la prod
+// donnees/engages-*.csv (hors git, données personnelles : sans cette exception, chaque mise à jour les EFFAÇAIT — 04/10).
 // Ce qui est installé (commit, et le précédent pour revenir en arrière) est noté dans /etc/pxl-kiosk/maj.json.
 import { execFile } from 'node:child_process';
 import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync } from 'node:fs';
@@ -102,7 +103,7 @@ async function poser(c, commit) {
   const r = await git(c, ['-c', 'advice.detachedHead=false', 'checkout', '-q', '-f', commit]); exiger(r.ok, r.err);
   if (c === 'app') {
     const s = await run('rsync', ['-a', '--delete', '--exclude', '.git', '--exclude', 'etat-local', '--exclude', 'pages/photos',
-      '--exclude', 'node_modules', clone(c) + '/', APP_DIR + '/']);
+      '--exclude', 'donnees/engages-*.csv', '--exclude', 'node_modules', clone(c) + '/', APP_DIR + '/']);
     exiger(s.ok, `rsync : ${s.err}`);
     await run('chown', ['-R', 'pxl:pxl', APP_DIR]);
     // et la SOURCE locale que installer.sh recopie (APP_SOURCE) : sinon une réinstallation de la box ramènerait
@@ -110,7 +111,7 @@ async function poser(c, commit) {
     const src = conf.APP_SOURCE;
     if (src && src.startsWith('/') && src !== APP_DIR && existsSync(src)) {
       const t = await run('rsync', ['-a', '--delete', '--exclude', '.git', '--exclude', 'etat-local', '--exclude', 'pages/photos',
-        '--exclude', 'node_modules', clone(c) + '/', src + '/']);
+        '--exclude', 'donnees/engages-*.csv', '--exclude', 'node_modules', clone(c) + '/', src + '/']);
       exiger(t.ok, `rsync (source) : ${t.err}`);
     }
   }
