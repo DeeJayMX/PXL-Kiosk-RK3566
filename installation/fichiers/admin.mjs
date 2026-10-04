@@ -14,7 +14,7 @@
 // Écritures sur la carte SD : seulement quand on ENREGISTRE un réglage (décision du 02/10/2026 : le minimum d'écritures).
 import { createServer } from 'node:http';
 import { execFile } from 'node:child_process';
-import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync, renameSync, chmodSync, readdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync, renameSync, chmodSync, readdirSync, statSync, createReadStream } from 'node:fs';
 import { randomBytes, randomUUID, scryptSync, timingSafeEqual, createHmac, createHash } from 'node:crypto';
 import { hostname, uptime, release, networkInterfaces } from 'node:os';
 import dgram from 'node:dgram';
@@ -438,6 +438,18 @@ function satAdresse(c) {   // { protocole, hote, port } depuis le fichier de Sat
     return { protocole: 'ws', hote: m ? m[1] : '', port: m && m[2] ? +m[2] : SAT_PORTS.ws }; }
   return { protocole: 'tcp', hote: c.remoteIp || '', port: +c.remotePort || SAT_PORTS.tcp };
 }
+// module Companion de l'habillage, EMBARQUÉ (04/10/2026, Eliott) : construit par GitHub Actions, déposé par maj.mjs dans
+// etat-local/companion-module/ (le même que sert la page d'accueil de l'habillage, :8765). Servi ici aussi, derrière la
+// connexion : l'onglet Companion le propose même si le serveur d'habillage est arrêté.
+const MODULE_DIR = join(APP_DIR, 'etat-local', 'companion-module');
+function moduleCompanion() {
+  let info = {}; try { info = JSON.parse(readFileSync(join(MODULE_DIR, 'info.json'), 'utf8')); } catch {}
+  const f = info.fichier && existsSync(join(MODULE_DIR, info.fichier)) ? info.fichier
+    : (() => { try { return readdirSync(MODULE_DIR).find(x => x.endsWith('.tgz')) || null; } catch { return null; } })();
+  let source = null; try { source = JSON.parse(readFileSync(join(APP_DIR, 'companion-module-urban-trail', 'package.json'), 'utf8')).version; } catch {}
+  return { fichier: f, taille: f ? statSync(join(MODULE_DIR, f)).size : null, version: info.version || null, construit: info.construit || null,
+    commit: info.source ? String(info.source).slice(0, 7) : null, versionSource: source };
+}
 async function companion() {
   const present = existsSync(`${SAT_DIR}/satellite/dist/main.js`), c = lireSatConf();
   if (!present || !c) return { present, version: lire(`${SAT_DIR}/BUILD`), surfaces: [] };
@@ -695,7 +707,7 @@ async function api(req, u, q) {
   const p = u.pathname;
   if (p === '/api/etat') {
     const [r, e, w, h, m, s, v] = await Promise.all([reseau(), ethernet(), wifi(), heure(), machine(), surveillance(), versions()]);
-    return { reseau: r, ethernet: e, wifi: w, heure: h, machine: m, materiel: materiel(), surveillance: s, versions: v, mode: mode(), ecran: await ecran(), wb: await wb(), relais: await relais(), companion: await companion(), secours: await secours(), retour: retourEnCours(), retour_s: RETOUR_S };
+    return { reseau: r, ethernet: e, wifi: w, heure: h, machine: m, materiel: materiel(), surveillance: s, versions: v, mode: mode(), ecran: await ecran(), wb: await wb(), relais: await relais(), companion: await companion(), companionModule: moduleCompanion(), secours: await secours(), retour: retourEnCours(), retour_s: RETOUR_S };
   }
   if (p === '/api/wifi/scan') {
     const r = await run('nmcli', ['-t', '-f', 'SSID,SIGNAL,SECURITY', 'dev', 'wifi', 'list', '--rescan', 'yes'], { timeout: 30000 });
@@ -798,6 +810,12 @@ function serveur() {
       }
       if (u.pathname === '/api/deconnexion') { res.setHeader('set-cookie', 'pxladmin=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0'); return json(res, 200, { ok: true }); }
       if (!sessionValide(req)) return json(res, 401, { erreur: 'connexion requise' });
+      if (u.pathname === '/api/companion-module.tgz') {
+        const m = moduleCompanion();
+        if (!m.fichier) return json(res, 404, { erreur: 'module Companion pas encore récupéré (Habillage › Mises à jour › Vérifier)' });
+        res.writeHead(200, { ...ENTETES, 'content-type': 'application/gzip', 'content-disposition': `attachment; filename="${m.fichier}"` });
+        return createReadStream(join(MODULE_DIR, m.fichier)).pipe(res);
+      }
       const r = await api(req, u, q);
       if (req.method === 'POST') console.log(`${ip} ${u.pathname}${q.mode ? ' ' + q.mode : ''}`);
       return json(res, 200, { ok: true, ...r });

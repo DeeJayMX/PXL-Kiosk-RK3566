@@ -198,3 +198,8 @@ Voir `README.md` pour la recette et `docs/README.md` pour l'index du dossier.
   `appliquer app` (même clé de déploiement, fetch explicite de la branche) dans `<APP_DIR>/etat-local/companion-module/`,
   hors de ce que la mise à jour réécrit ; le serveur d'habillage le sert sur sa page d'accueil (`/companion-module.tgz`).
   Jamais bloquant. Aucun outil de construction sur la box (option A, construire sur la box, écartée).
+- **/admin › Companion : le module de l'habillage** (04/10, v1.22.0, Eliott) — bloc « Module Companion de l'habillage » :
+  fichier, version, date, commit source, bouton **Télécharger** (`/api/companion-module.tgz`, derrière la connexion, servi
+  par l'admin lui-même : marche même serveur d'habillage arrêté) et **Rechercher une nouvelle version** (= `maj verifier app`,
+  qui ramène la branche `companion-module`). Prévient si l'habillage installé porte une autre version du module que le
+  `.tgz` récupéré. Page rendue dans Chromium (module présent / absent, 0 erreur JS, l'appel part bien).

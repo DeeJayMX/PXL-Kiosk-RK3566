@@ -45,6 +45,8 @@
     border: 1px solid #34414f; border-radius: 8px; cursor: pointer; }
   button:hover { background: #2c3a4a; }
   button.principal { background: var(--accent); border-color: var(--accent); color: #06121f; }
+  /* lien de téléchargement présenté en bouton principal (module Companion, 04/10) */
+  a.bouton { display: inline-flex; align-items: center; min-height: 44px; padding: 10px 16px; box-sizing: border-box; font-weight: 600; text-decoration: none; border-radius: 8px; background: var(--accent); color: #06121f; }
   button.danger { background: transparent; border-color: var(--rouge); color: var(--rouge); }
   button:disabled { opacity: .5; cursor: wait; }
   .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
@@ -272,6 +274,16 @@
     <div class="table"><table id="cp-t" class="cache"><thead><tr><th>Surface branchée</th><th>N° de série</th><th>Identifiant dans Companion <span class="aide" tabindex="0">❔<span class="aide-texte">Fixé par
       le numéro de série du Stream Deck : c'est à lui que Companion rattache la page et les réglages de la surface. Il ne
       change pas d'une box à l'autre ni d'un port USB à l'autre.</span></span></th></tr></thead><tbody id="cp-surfaces"></tbody></table></div>
+  </section>
+
+  <section data-onglet="companion">
+    <h2>Module Companion de l'habillage <span class="aide" tabindex="0">❔<span class="aide-texte">Le module « PXL Urban Trail »
+      à installer dans le Companion de la régie : Modules › Import module package, puis choisir ce fichier. Il est construit
+      par GitHub à chaque modification et la box le récupère à chaque mise à jour de l'habillage. Aussi téléchargeable sur la
+      page d'accueil de l'habillage (port 8765).</span></span></h2>
+    <div id="cpm-etat" class="note">chargement…</div>
+    <div class="actions"><a class="bouton cache" id="cpm-lien" href="/api/companion-module.tgz" download>⬇ Télécharger le module</a>
+      <button type="button" id="cpm-verifier">Rechercher une nouvelle version</button></div>
   </section>
 
   <section data-onglet="habillage">
@@ -531,6 +543,15 @@ function rendre() {
         + (u.adresse ? ` · ${esc(u.adresse)}` : ' · en attente d’adresse') + (u.passerelle ? ` · Internet par ${esc(u.passerelle)}` : '')).join('<br>')
       : '○ aucun téléphone branché' + (sc.usbmuxd ? '' : ' · <span class="ko">usbmuxd absent (iPhone)</span>');
   }
+  // module Companion embarqué
+  const cm = E.companionModule;
+  if (cm) {
+    $('#cpm-lien').classList.toggle('cache', !cm.fichier);
+    $('#cpm-etat').innerHTML = !cm.fichier ? '<span class="moyen">○ pas encore récupéré sur cette box</span> — « Rechercher une nouvelle version » le télécharge.'
+      : `<span class="ok">● ${esc(cm.fichier)}</span> · v${esc(cm.version || '?')} · ${Math.round(cm.taille / 1024)} Ko`
+        + (cm.construit ? ` · construit le ${esc(new Date(cm.construit).toLocaleString('fr-FR'))}` : '') + (cm.commit ? ` · source ${esc(cm.commit)}` : '')
+        + (cm.versionSource && cm.version && cm.versionSource !== cm.version ? `<br><span class="moyen">⚠ l'habillage installé porte la v${esc(cm.versionSource)} du module : nouvelle construction en attente sur GitHub, ou à récupérer.</span>` : '');
+  }
   // Companion (Satellite)
   const cp = E.companion;
   if (cp) {
@@ -773,6 +794,7 @@ $('#wb-chercher').addEventListener('click', ev => {
 $('#wb-trouves').addEventListener('click', ev => { const u = ev.target.dataset && ev.target.dataset.relais;
   if (u) { $('#wb-url').value = u; $('#f-wb').dataset.touche = 1; } });
 $('#f-relais').addEventListener('input', () => { $('#f-relais').dataset.touche = 1; });
+$('#cpm-verifier').addEventListener('click', ev => action(ev.target, () => appel('/api/maj/verifier', { cible: 'app' }), 'module recherché sur GitHub'));
 $('#f-companion').addEventListener('input', ev => { $('#f-companion').dataset.touche = 1;
   // changer de type de connexion propose le port par défaut de Companion pour ce type
   if (ev.target.id === 'cp-proto') { const v = $('#cp-proto').value === 'ws' ? 16623 : 16622, p = $('#cp-port');
