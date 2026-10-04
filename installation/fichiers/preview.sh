@@ -33,7 +33,17 @@ fi
 # un mode FORCÉ absent de l'écran est émis QUAND MÊME, avec les timings CEA de pxl-mode. Jusque-là la box se repliait
 # (vu le 04/10 : 1080p25 demandé, 720p60 émis sur un moniteur 60 Hz). Repli seulement si pxl-mode échoue (pilote qui
 # refuse, plus de connecteur) — dit dans le journal, et /admin le montre (« résolution émise »).
-if /usr/local/lib/pxl-kiosk/pxl-mode "$MODE" "${SORTIE_NOM:-HDMI-A-1}"; then
+# 🔴 v1.20.1 : TROIS essais avant le repli. Vu le 04/10 à 22:17:22 : « pas maître DRM (Permission denied) » puis
+# « SetCrtc: Permission denied » sur une relance rapprochée (six changements de mode en une minute depuis /admin) — la
+# preview précédente n'avait sans doute pas encore rendu la carte (déduit, non prouvé). Le repli tombait par chance sur le
+# mode demandé ; autrement il aurait émis une autre résolution. Code 2 (mode introuvable ou refusé par le pilote) : inutile
+# d'insister, le résultat ne changera pas.
+for essai in 1 2 3; do
+  /usr/local/lib/pxl-kiosk/pxl-mode "$MODE" "${SORTIE_NOM:-HDMI-A-1}"; rc=$?
+  [ $rc = 0 ] || [ $rc = 2 ] && break
+  [ $essai -lt 3 ] && { echo "pxl-mode : essai $essai échoué (code $rc) — nouvel essai dans 1 s"; sleep 1; }
+done
+if [ $rc = 0 ]; then
   WMODE=current; sleep 1
 else
   repli=1280x720@50

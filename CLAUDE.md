@@ -188,3 +188,8 @@ Voir `README.md` pour la recette et `docs/README.md` pour l'index du dossier.
   summary, debugfs root — mesuré) ; `pxl-wb` est `PartOf=pxl-preview` pour se relancer avec elle. Le GOP se range
   désormais en SECONDES (`WB_GOP_S`). ✅ Mesuré en AUTO sur 1080p60 : **56,7-58,9 img/s**, 16,8 ms/img, 0 barrière en
   retard, Chromium ~50 % d'un cœur ×2. 🎯 AUTO en 1080i50 (→ 25) non remesuré sur la box : logique seule.
+- **`pxl-mode` réessayé avant le repli** (04/10, v1.20.1) : vu à 22:17:22 un `pas maître DRM (Permission denied)` +
+  `SetCrtc: Permission denied` sur une relance rapprochée de la preview (six changements de mode en une minute) — la
+  preview précédente tenait sans doute encore la carte (déduit, non prouvé). `preview.sh` fait 3 essais à 1 s d'intervalle
+  ; code 2 (mode introuvable ou refusé par le pilote) ⇒ pas d'insistance. Boucle vérifiée sur un faux pxl-mode (codes
+  1-1-0 → posé au 3ᵉ ; 1-1-1 → repli ; 2 → repli immédiat ; 0 → posé).
