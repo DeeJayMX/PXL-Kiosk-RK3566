@@ -221,8 +221,8 @@ const MODES_HDMI = ['auto', '1280x720@25', '1280x720@30', '1280x720@50', '1280x7
 // image tient ses deux trames, donc écran ET flux writeback propres en mouvement — preview.sh pose PXL_PSF=1).
 const ENTRELACES = ['50i', 'psf'];
 // Les modes que l'écran BRANCHÉ déclare (pxl-mode --liste) : un mode absent n'est pas refusé — on règle parfois la box
-// pour la TV du lieu —, mais il est signalé, et preview.sh se replie explicitement (sans quoi Weston prendrait le mode
-// préféré de l'écran : 3840x2160p60 sur la TV du labo, mesuré le 03/10/2026 sur un 720p25 qu'elle ne déclare pas).
+// pour la TV du lieu —, il est signalé, et depuis la v1.19.0 il est ÉMIS QUAND MÊME (timings CEA de pxl-mode). Avant :
+// repli explicite, sans quoi Weston prenait le mode préféré (3840x2160p60 sur la TV du labo, mesuré le 03/10/2026).
 // Format du LIEN HDMI (04/10/2026, Eliott : « Le SDI ! et le 10 bits est mieux traité dans un environnement mélangeur »).
 // Posé par preview.sh (pxl-mode --couleur) avant tout modeset. Le pilote retombe EN SILENCE en RGB / 8 bits si l'écran ne
 // déclare pas le format : on affiche donc le bus_format RÉELLEMENT émis, lu dans le summary du VOP2 (la seule vérité).

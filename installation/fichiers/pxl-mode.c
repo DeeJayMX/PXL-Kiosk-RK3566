@@ -20,7 +20,9 @@
 // Lancé par preview.sh AVANT Weston, qui est alors réglé sur « mode=current » et reprend ce mode tel quel. Déroulé :
 // maître DRM (premier à ouvrir la carte) → mode posé avec un tampon noir → on rend la main (drmDropMaster) MAIS on garde le
 // tampon ouvert 30 s : fermer tout de suite retirerait le tampon, et le noyau éteindrait l'écran avant que Weston le lise.
-// Code de sortie : 0 posé, 2 mode absent de l'écran, 1 autre échec — dans tous les cas preview.sh continue.
+// Code de sortie : 0 posé, 2 mode introuvable ou refusé par le pilote, 1 autre échec — preview.sh se replie alors.
+// ⚠ (04/10) Depuis la v1.19.0, pxl-mode pose TOUS les modes forcés (progressifs compris), y compris ceux que l'écran ne
+// déclare pas (table CEA ci-dessous) ; Weston reprend le mode courant (« mode=current »).
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -30,6 +32,28 @@
 #include <unistd.h>
 #include <xf86drm.h>
 #include <xf86drmMode.h>
+
+// Les modes broadcast écrits à la main (CEA-861, VIC entre crochets — mêmes valeurs que la table edid_cea_modes du noyau) :
+// un mode FORCÉ absent de la liste de l'écran est posé QUAND MÊME avec ces timings (décision d'Eliott, 04/10/2026 : « je
+// veux qu'il force la sortie, même si elle n'est pas proposée par l'écran »). Un convertisseur SDI ou un enregistreur n'a
+// souvent aucun EDID exploitable, et l'écran du technicien n'a pas à dicter le format d'antenne (PXL-Switcher § 9b.17 :
+// 1080i50 non déclaré, posé et tenu sur RK3588). Le pilote peut encore refuser (horloge) : SetCrtc échoue, rc=2.
+#define CEA(l,h,c,hs,he,ht,vs,ve,vt,r,f) { .clock=c, .hdisplay=l, .hsync_start=hs, .hsync_end=he, .htotal=ht, \
+	.vdisplay=h, .vsync_start=vs, .vsync_end=ve, .vtotal=vt, .vrefresh=r, \
+	.flags=DRM_MODE_FLAG_PHSYNC|DRM_MODE_FLAG_PVSYNC|(f), .type=DRM_MODE_TYPE_DRIVER }
+static const drmModeModeInfo CEA_MODES[] = {
+	CEA(1280, 720,  74250, 3700, 3740, 3960,  725,  730,  750, 25, 0),   // [61]
+	CEA(1280, 720,  74250, 3040, 3080, 3300,  725,  730,  750, 30, 0),   // [62]
+	CEA(1280, 720,  74250, 1720, 1760, 1980,  725,  730,  750, 50, 0),   // [19]
+	CEA(1280, 720,  74250, 1390, 1430, 1650,  725,  730,  750, 60, 0),   // [4]
+	CEA(1920, 1080, 74250, 2558, 2602, 2750, 1084, 1089, 1125, 24, 0),   // [32]
+	CEA(1920, 1080, 74250, 2448, 2492, 2640, 1084, 1089, 1125, 25, 0),   // [33]
+	CEA(1920, 1080, 74250, 2008, 2052, 2200, 1084, 1089, 1125, 30, 0),   // [34]
+	CEA(1920, 1080, 148500, 2448, 2492, 2640, 1084, 1089, 1125, 50, 0),  // [31]
+	CEA(1920, 1080, 148500, 2008, 2052, 2200, 1084, 1089, 1125, 60, 0),  // [16]
+	CEA(1920, 1080, 74250, 2448, 2492, 2640, 1084, 1094, 1125, 50, DRM_MODE_FLAG_INTERLACE),   // [20]
+	CEA(1920, 1080, 74250, 2008, 2052, 2200, 1084, 1094, 1125, 60, DRM_MODE_FLAG_INTERLACE),   // [5]
+};
 
 static const char *nom_type(uint32_t t) {
 	switch (t) { case DRM_MODE_CONNECTOR_HDMIA: return "HDMI-A"; case DRM_MODE_CONNECTOR_HDMIB: return "HDMI-B";
@@ -134,7 +158,17 @@ int main(int argc, char **argv) {
 		drmModeModeInfo *x = &c->modes[k];
 		if (x->hdisplay == l && x->vdisplay == h && (int)x->vrefresh == r && !!(x->flags & DRM_MODE_FLAG_INTERLACE) == entrelace) m = x;
 	}
-	if (!m) { fprintf(stderr, "pxl-mode : %s absent de la liste de l'écran\n", argv[1]); return 2; }
+	drmModeModeInfo force;
+	if (!m) for (unsigned k = 0; k < sizeof CEA_MODES / sizeof *CEA_MODES && !m; k++) {
+		const drmModeModeInfo *x = &CEA_MODES[k];
+		if (x->hdisplay == l && x->vdisplay == h && (int)x->vrefresh == r && !!(x->flags & DRM_MODE_FLAG_INTERLACE) == entrelace) {
+			force = *x;
+			snprintf(force.name, sizeof force.name, "%dx%d%s", l, h, entrelace ? "i" : "");
+			m = &force;
+			printf("pxl-mode : %s absent de la liste de l'écran — forcé avec les timings CEA\n", argv[1]);
+		}
+	}
+	if (!m) { fprintf(stderr, "pxl-mode : %s absent de la liste de l'écran et de la table CEA\n", argv[1]); return 2; }
 
 	uint32_t crtc = 0;
 	drmModeEncoder *e = c->encoder_id ? drmModeGetEncoder(fd, c->encoder_id) : NULL;
@@ -155,7 +189,7 @@ int main(int argc, char **argv) {
 		void *p = mmap(0, cd.size, PROT_WRITE, MAP_SHARED, fd, md.offset);
 		if (p != MAP_FAILED) { memset(p, 0, cd.size); munmap(p, cd.size); }
 	}
-	if (drmModeSetCrtc(fd, crtc, fb, 0, 0, &c->connector_id, 1, m)) { perror("pxl-mode : SetCrtc"); return 1; }
+	if (drmModeSetCrtc(fd, crtc, fb, 0, 0, &c->connector_id, 1, m)) { perror("pxl-mode : SetCrtc"); return m == &force ? 2 : 1; }
 	printf("pxl-mode : %s posé sur %s (crtc %u, %u kHz)\n", m->name, voulu, crtc, m->clock);
 	fflush(stdout);
 	drmDropMaster(fd);

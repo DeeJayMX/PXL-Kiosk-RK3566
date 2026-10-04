@@ -5,8 +5,14 @@
 export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/pxl-preview}
 export LIBSEAT_BACKEND=seatd
 
-# Le mode demandé doit exister sur l'écran branché : sinon Weston prend le mode PRÉFÉRÉ sans rien dire — 3840x2160p60
-# sur la TV du labo (mesuré le 03/10/2026 en demandant un 720p25 qu'elle ne déclare pas). Repli explicite et dit.
+# Format du LIEN HDMI (04/10/2026, demande d'Eliott : 4:2:2 10 bits pour un convertisseur SDI / un mélangeur) — posé AVANT
+# tout modeset, Weston ne connaît pas ces propriétés Rockchip et ne les touche pas. Chromium dessine toujours en RGB 8 bits :
+# c'est le VOP2 qui convertit vers le lien, sans coût. Le pilote retombe en RGB / 8 bits si l'écran ne déclare pas le
+# format demandé — sans erreur : /admin affiche le bus_format réellement émis. Défaut : RGB 8 bits (le réglage d'origine).
+LIEN_FORMAT=${LIEN_FORMAT:-rgb}; LIEN_PROFONDEUR=${LIEN_PROFONDEUR:-8}
+/usr/local/lib/pxl-kiosk/pxl-mode --couleur "$LIEN_FORMAT" "$LIEN_PROFONDEUR" "${SORTIE_NOM:-HDMI-A-1}" || true
+BPC=10; [ "$LIEN_PROFONDEUR" = 8 ] && BPC=8
+
 MODE=$SORTIE_MODE
 LISTE=$(/usr/local/lib/pxl-kiosk/pxl-mode --liste "${SORTIE_NOM:-HDMI-A-1}" 2>/dev/null)
 # AUTO (/admin, 04/10/2026) : le premier mode de cette liste que l'écran déclare — cadences européennes d'abord, jamais
@@ -19,23 +25,22 @@ if [ "$MODE" = auto ]; then
   done
   echo "AUTO : $MODE"
 fi
-if [ -n "$LISTE" ] && ! grep -qxF "$MODE" <<<"$LISTE"; then
-  for repli in 1280x720@50 1920x1080@50 1280x720@60 1920x1080@60; do grep -qxF "$repli" <<<"$LISTE" && break; done
-  echo "⚠ $MODE absent de l'écran branché — repli sur $repli"
-  MODE=$repli
+
+# Le mode est TOUJOURS posé par pxl-mode, puis Weston le reprend (« mode=current ») : Weston ne sait choisir ni un
+# entrelacé (il prend le 1080p50), ni un mode absent de la liste de l'écran (il prend le PRÉFÉRÉ sans rien dire —
+# 3840x2160p60 sur la TV du labo, mesuré le 03/10 en demandant un 720p25 qu'elle ne déclare pas).
+# 🔴 v1.19.0 (décision d'Eliott, 04/10 : « je veux qu'il force la sortie, même si elle n'est pas proposée par l'écran ») :
+# un mode FORCÉ absent de l'écran est émis QUAND MÊME, avec les timings CEA de pxl-mode. Jusque-là la box se repliait
+# (vu le 04/10 : 1080p25 demandé, 720p60 émis sur un moniteur 60 Hz). Repli seulement si pxl-mode échoue (pilote qui
+# refuse, plus de connecteur) — dit dans le journal, et /admin le montre (« résolution émise »).
+if /usr/local/lib/pxl-kiosk/pxl-mode "$MODE" "${SORTIE_NOM:-HDMI-A-1}"; then
+  WMODE=current; sleep 1
+else
+  repli=1280x720@50
+  [ -n "$LISTE" ] && for repli in 1280x720@50 1920x1080@50 1280x720@60 1920x1080@60; do grep -qxF "$repli" <<<"$LISTE" && break; done
+  echo "⚠ $MODE refusé par pxl-mode — repli sur $repli"
+  MODE=$repli; WMODE=$repli
 fi
-
-# Format du LIEN HDMI (04/10/2026, demande d'Eliott : 4:2:2 10 bits pour un convertisseur SDI / un mélangeur) — posé AVANT
-# tout modeset, Weston ne connaît pas ces propriétés Rockchip et ne les touche pas. Chromium dessine toujours en RGB 8 bits :
-# c'est le VOP2 qui convertit vers le lien, sans coût. Le pilote retombe en RGB / 8 bits si l'écran ne déclare pas le
-# format demandé — sans erreur : /admin affiche le bus_format réellement émis. Défaut : RGB 8 bits (le réglage d'origine).
-LIEN_FORMAT=${LIEN_FORMAT:-rgb}; LIEN_PROFONDEUR=${LIEN_PROFONDEUR:-8}
-/usr/local/lib/pxl-kiosk/pxl-mode --couleur "$LIEN_FORMAT" "$LIEN_PROFONDEUR" "${SORTIE_NOM:-HDMI-A-1}" || true
-BPC=10; [ "$LIEN_PROFONDEUR" = 8 ] && BPC=8
-
-# Mode entrelacé (1080i50) : Weston ne sait pas le choisir (il prend le 1080p50) — pxl-mode le pose d'abord, et Weston
-# lit alors « mode=current ». Échec ⇒ on continue : Weston prendra le mode courant, quel qu'il soit.
-case "$MODE" in *i@*) /usr/local/lib/pxl-kiosk/pxl-mode "$MODE" "${SORTIE_NOM:-HDMI-A-1}" || true; WMODE=current; sleep 1 ;; *) WMODE=$MODE ;; esac
 # ⚠️ (04/10) le « sleep 1 » laisse le changement de mode se poser avant que Weston prenne la main : voir plus bas.
 
 # Entrelacé en PsF (ENTRELACE=psf, défaut — décision d'Eliott, 03/10 ; réglé dans /admin) : Weston patché se cadence à

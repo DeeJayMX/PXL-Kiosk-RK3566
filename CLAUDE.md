@@ -174,3 +174,10 @@ Voir `README.md` pour la recette et `docs/README.md` pour l'index du dossier.
   prévient quand elle diffère du mode forcé. Vu le jour même : `SORTIE_MODE=1920x1080@25` sur un moniteur qui ne déclare
   que du 60 Hz ⇒ repli **720p60** que rien n'affichait jusque-là. ⚠️ L'ordre de repli de `preview.sh` (720p50 › 1080p50 ›
   720p60 › 1080p60) préfère le 720p60 au 1080p60 — non changé.
+- 🔴 **Mode FORCÉ = émis même si l'écran ne le déclare pas** (04/10, v1.19.0, décision d'Eliott : *« je veux qu'il force
+  la sortie, même si elle n'est pas proposée par l'écran »* ; au rebranchement le forcé est GARDÉ, seul AUTO suit l'écran).
+  `pxl-mode` porte une table CEA-861 des 11 modes de /admin (timings du noyau, VIC en commentaire) et pose désormais
+  **tous** les modes, progressifs compris ; Weston reprend en `mode=current`. Repli (ancien ordre) seulement si pxl-mode
+  échoue. ✅ Mesuré sur un moniteur qui ne déclare que du 60 Hz : `1920x1080@25` ⇒ `Display mode: 1920x1080p25`
+  (2640/1125, 74,25 MHz), `1920x1080i@50` ⇒ `1920x1080i50`, image de Weston active, 0 commit refusé, flux à 23-25 img/s.
+  🎯 Que l'écran AFFICHE un mode non déclaré n'est pas prouvé par la box — c'est l'œil qui tranche.
