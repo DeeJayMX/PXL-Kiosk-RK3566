@@ -211,7 +211,11 @@ const CONF = '/etc/pxl-kiosk.conf', WESTON_INI = '/etc/pxl-kiosk/weston.ini';
 // « i » = entrelacé : Weston ne sait pas le choisir, pxl-mode le pose avant lui (preview.sh) et weston.ini dit « current »
 // Les cadences broadcast en 720p / 1080p / 1080i (demande d'Eliott, 04/10/2026 : 1080i60 vérifié sur la TV Samsung).
 // Ni 4K ni SD : le flux writeback est tissé et encodé en 1920×1080 (pxl-wb-enc), et Chromium en 4K écraserait la box.
-const MODES_HDMI = ['1280x720@25', '1280x720@30', '1280x720@50', '1280x720@60',
+// « auto » : preview.sh prend le premier mode déclaré par l'écran dans son ordre (1080i50 › 1080p50 › 720p50 › 1080i60 ›
+// 1080p60 › 720p60), et la garde HDMI relance la preview quand on branche un AUTRE écran (EDID différent). Un mode
+// FORCÉ, lui, ne relance rien au rebranchement : la box n'a jamais cessé d'émettre, l'image revient dès que la TV
+// accroche (demande d'Eliott, 04/10 : « c'est un peu long »).
+const MODES_HDMI = ['auto', '1280x720@25', '1280x720@30', '1280x720@50', '1280x720@60',
   '1920x1080@24', '1920x1080@25', '1920x1080@30', '1920x1080@50', '1920x1080@60', '1920x1080i@50', '1920x1080i@60'];
 // En entrelacé (valeurs historiques nommées en 50 Hz, valables aussi en 60) : « 50i » (Weston à la trame, mouvement fluide à l'écran) ou « psf » (Weston à l'IMAGE, 25 img/s : chaque
 // image tient ses deux trames, donc écran ET flux writeback propres en mouvement — preview.sh pose PXL_PSF=1).
@@ -223,7 +227,7 @@ async function ecran() {
   const c = lireConf();
   const l = await run('/usr/local/lib/pxl-kiosk/pxl-mode', ['--liste', c.SORTIE_NOM || 'HDMI-A-1']);
   const declares = l.ok && l.out.trim() ? new Set(l.out.trim().split('\n')) : null;
-  return { mode: c.SORTIE_MODE || null, modes: MODES_HDMI, dispo: declares ? MODES_HDMI.filter(m => declares.has(m)) : null,
+  return { mode: c.SORTIE_MODE || null, modes: MODES_HDMI, dispo: declares ? MODES_HDMI.filter(m => m === 'auto' || declares.has(m)) : null,
     entrelace: ENTRELACES.includes(c.ENTRELACE) ? c.ENTRELACE : 'psf', entrelaces: ENTRELACES };
 }
 const poserLigne = (texte, cle, valeur) => { const re = new RegExp(`^\\s*${cle}=.*$`, 'm'), l = `${cle}=${valeur}`;
@@ -235,7 +239,7 @@ async function regleEcran(q) {
   let conf = poserLigne(readFileSync(CONF, 'utf8'), 'SORTIE_MODE', q.mode);
   if (q.entrelace !== undefined) conf = poserLigne(conf, 'ENTRELACE', q.entrelace);
   ecrireAtomique(CONF, conf);
-  if (existsSync(WESTON_INI)) ecrireAtomique(WESTON_INI, poserLigne(readFileSync(WESTON_INI, 'utf8'), 'mode', q.mode.includes('i@') ? 'current' : q.mode));
+  if (existsSync(WESTON_INI)) ecrireAtomique(WESTON_INI, poserLigne(readFileSync(WESTON_INI, 'utf8'), 'mode', q.mode.includes('i@') || q.mode === 'auto' ? 'current' : q.mode));
   const r = await run('systemctl', ['restart', 'pxl-preview']); exiger(r.ok, r.err);
   return {};
 }

@@ -144,7 +144,10 @@
 
   <section data-onglet="habillage">
     <h2>Sortie HDMI <span class="aide" tabindex="0">❔<span class="aide-texte">Seul l'écran HDMI de la box se relance (quelques secondes de noir) ; le serveur et l'antenne ne sont
-      pas touchés. 720p : moins de travail pour la box. La TV doit accepter le mode choisi. En 1080i :
+      pas touchés. 720p : moins de travail pour la box. La TV doit accepter le mode choisi.
+      <b>Mode forcé</b> : rebrancher le câble ne relance rien, l'image revient dès que la TV accroche.
+      <b>AUTO</b> : le premier mode que l'écran accepte parmi 1080i50 › 1080p50 › 720p50 › 1080i60 › 1080p60 › 720p60 ;
+      brancher un AUTRE écran relance la sortie (~10 s de noir), rebrancher le même ne relance rien. En 1080i :
       <b>fluide</b> = une image par trame, mouvement fluide à l'écran mais le flux TurboHQ « peigne » ce qui bouge ;
       <b>PsF</b> = une image pour deux trames (25 img/s en 1080i50, 30 en 1080i60), écran et flux propres même en
       mouvement, et deux fois moins de travail pour Chromium. Ce qui s'affiche (Preview,
@@ -447,12 +450,12 @@ function rendre() {
   // Écran
   const ec = E.ecran;
   if (ec && !$('#f-ecran').dataset.touche) {
-    $('#ecran-mode').innerHTML = ec.modes.map(m => `<option value="${m}">${m.replace('1280x720', '720p').replace('1920x1080i', '1080i').replace('1920x1080', '1080p').replace('@', ' · ')} Hz${ec.dispo && !ec.dispo.includes(m) ? ' — absent de l’écran branché (repli 720p50)' : ''}</option>`).join('')
+    $('#ecran-mode').innerHTML = ec.modes.map(m => m === 'auto' ? `<option value="auto">AUTO — suit l’écran branché, relance si on change d’écran</option>` : `<option value="${m}">${m.replace('1280x720', '720p').replace('1920x1080i', '1080i').replace('1920x1080', '1080p').replace('@', ' · ')} Hz${ec.dispo && !ec.dispo.includes(m) ? ' — absent de l’écran branché (repli 720p50)' : ''}</option>`).join('')
       + (ec.modes.includes(ec.mode) ? '' : `<option value="" disabled>${esc(ec.mode || '?')}</option>`);
     $('#ecran-mode').value = ec.modes.includes(ec.mode) ? ec.mode : '';
     $('#ecran-entrelace').value = ec.entrelace || '50i';
   }
-  $('#bloc-entrelace').hidden = !($('#ecran-mode').value || '').includes('i@');
+  $('#bloc-entrelace').hidden = !/i@|auto/.test($('#ecran-mode').value || '');
   // Flux TurboHQ
   const fx = E.wb;
   if (fx) {
@@ -692,7 +695,7 @@ $('#b-reboot').addEventListener('click', ev => confirm('Redémarrer la box ? Env
 $('#b-eteindre').addEventListener('click', ev => confirm('Éteindre la box ? Plus d\'habillage jusqu\'à ce qu\'on débranche et rebranche l\'alimentation.')
   && action(ev.target, () => appel('/api/eteindre', {}), 'extinction en cours — quand la façade s\'éteint, on peut débrancher'));
 $('#f-ecran').addEventListener('input', () => { $('#f-ecran').dataset.touche = 1;
-  $('#bloc-entrelace').hidden = !($('#ecran-mode').value || '').includes('i@'); });
+  $('#bloc-entrelace').hidden = !/i@|auto/.test($('#ecran-mode').value || ''); });
 $('#f-ecran').addEventListener('submit', ev => {
   ev.preventDefault();
   action(ev.submitter, async () => { await appel('/api/ecran', { mode: $('#ecran-mode').value, entrelace: $('#ecran-entrelace').value });

@@ -55,7 +55,7 @@ verifier() {
   v "/dev/video-dec0 (posé par udev)"       "test -f /dev/video-dec0"
   v "/usr/lib64/libv4l2.so (libv4l patchée)" "test -f /usr/lib64/libv4l2.so"
   v "Chromium (DevTools :9222)"             "curl -sf -o /dev/null http://127.0.0.1:9222/json/version"
-  local dm; case "$SORTIE_MODE" in *i@*) dm="${SORTIE_MODE%@*}${SORTIE_MODE#*@}" ;; *) dm="${SORTIE_MODE%@*}p${SORTIE_MODE#*@}" ;; esac
+  local dm; case "$SORTIE_MODE" in auto) dm= ;; *i@*) dm="${SORTIE_MODE%@*}${SORTIE_MODE#*@}" ;; *) dm="${SORTIE_MODE%@*}p${SORTIE_MODE#*@}" ;; esac
   v "sortie HDMI en $SORTIE_MODE"           "grep -q 'Display mode: $dm' /sys/kernel/debug/dri/0/summary"
   # Le rendu de la page passe-t-il par le GPU (Panfrost) et pas par SwiftShader ?
   local gl; gl=$(/opt/node/bin/node --input-type=module -e '
@@ -177,7 +177,7 @@ idle-time=0
 cursor-size=1
 [output]
 name=$SORTIE_NOM
-mode=$(case "$SORTIE_MODE" in *i@*) echo current ;; *) echo "$SORTIE_MODE" ;; esac)
+mode=$(case "$SORTIE_MODE" in *i@*|auto) echo current ;; *) echo "$SORTIE_MODE" ;; esac)
 EOF
 { echo "HOST=$APP_HOST"; echo "PORT=$APP_PORT"; for e in $APP_ENV; do echo "$e"; done; } > /etc/pxl-kiosk/serveur.env
 

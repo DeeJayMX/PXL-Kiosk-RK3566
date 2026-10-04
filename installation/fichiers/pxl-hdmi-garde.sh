@@ -1,24 +1,25 @@
 #!/bin/bash
-# Garde de la sortie HDMI (pxl-hdmi-garde.service, root) : relance la preview (1) à CHAQUE rebranchement d'un écran,
-# et (2) quand un écran est branché mais que rien n'est balayé.
+# Garde de la sortie HDMI (pxl-hdmi-garde.service, root) : relance la preview (1) quand on branche un AUTRE écran en
+# mode AUTO, et (2) quand un écran est branché mais que rien n'est balayé.
 #
 # Pourquoi (mesuré le 04/10/2026 sur la TV Samsung de la régie) : après un débranchement / rebranchement, le premier
 # commit de Weston est parfois refusé (« atomic: couldn't commit new state: Invalid argument », puis « repaint-flush
-# failed ») et Weston NE RÉESSAIE JAMAIS : le Video Port reste éteint, la TV dit « aucun signal ». Et en 1080i50 la TV a
-# aussi montré un signal NOIR après un rebranchement, Video Port actif — cas que le scanout ne voit pas.
+# failed ») et Weston NE RÉESSAIE JAMAIS : le Video Port reste éteint, la TV dit « aucun signal ».
 # Relancer pxl-preview refait tout dans l'ordre (pxl-mode pour un mode entrelacé, puis Weston, puis Chromium).
 #
-# (1) ÉVÉNEMENT — décision d'Eliott, 04/10 (option A) : tout passage débranché → branché déclenche une relance, une fois
-#     l'écran branché depuis ATTENTE s (un câble qu'on enfonce rebondit). Coût assumé : ~10 s de noir à chaque
-#     rebranchement, contre un signal toujours reposé à neuf. Réveil par `udevadm monitor` (événements drm), sans
-#     attendre le pas de la boucle ; la transition se lit sur `status`, pas sur l'événement (une relecture d'EDID ou la
-#     relance elle-même émettent aussi des « change »).
+# (1) REBRANCHEMENT — décision d'Eliott, 04/10 : relancer à chaque rebranchement coûtait ~10 s de noir (« un peu
+#     long »). Désormais : mode FORCÉ (SORTIE_MODE=1920x1080i@50…) ⇒ rien, la box n'a jamais cessé d'émettre et
+#     l'image revient dès que la TV accroche ; mode AUTO ⇒ relance seulement si l'EDID a changé (un AUTRE écran, dont
+#     preview.sh doit relire les modes). Réveil par `udevadm monitor` (événements drm) ; la transition se lit sur
+#     `status`, l'écran sur l'empreinte de `edid`, qu'on relit après ATTENTE s (un câble qu'on enfonce rebondit).
 # (2) FILET — prédicat = l'état du SCANOUT (debugfs), jamais le journal de Weston : aucun « Video Port: ACTIVE »
 #     pendant 3 lectures de suite (6 s ; une relance normale l'éteint quelques secondes), au plus une fois / 30 s
 #     (un écran qui refuserait tout ne doit pas faire tourner la box en boucle).
-. /etc/pxl-kiosk.conf 2>/dev/null
+. "${PXL_GARDE_CONF:-/etc/pxl-kiosk.conf}" 2>/dev/null
 NOM=${SORTIE_NOM:-HDMI-A-1}
 STATUT=${PXL_GARDE_STATUT:-/sys/class/drm/card0-$NOM/status}   # surcharges : essai hors box
+EDID=${PXL_GARDE_EDID:-/sys/class/drm/card0-$NOM/edid}
+CONF=${PXL_GARDE_CONF:-/etc/pxl-kiosk.conf}
 RESUME=${PXL_GARDE_RESUME:-/sys/kernel/debug/dri/0/summary}
 MONITEUR=${PXL_GARDE_MONITEUR:-udevadm monitor --udev --subsystem-match=drm}
 PAS=${PXL_GARDE_PAS:-2} ATTENTE=${PXL_GARDE_ATTENTE:-3} TENUE=3 ECART=30
@@ -33,16 +34,22 @@ relancer() {
   derniere=$(date +%s); n=0
 }
 
+empreinte() { md5sum < "$EDID" 2>/dev/null | cut -c1-32; }
+VIDE=$(md5sum < /dev/null | cut -c1-32)
+mode_sortie() { (. "$CONF" 2>/dev/null; echo "${SORTIE_MODE:-}"); }   # relu à chaque fois : /admin le change à chaud
+
 coproc MON { exec $MONITEUR 2>/dev/null; }
-n=0; derniere=0; rebranche=0; avant=$(cat "$STATUT" 2>/dev/null)
+n=0; derniere=0; rebranche=0; avant=$(cat "$STATUT" 2>/dev/null); ecran=$(empreinte)
 echo "garde HDMI : $NOM ${avant:-?}"
 while :; do
   # attend un événement drm OU le pas ; moniteur mort (fin de flux) ⇒ simple minuterie
+  # (rebranchement en attente de décision : on relit toutes les 0,5 s)
+  t=$PAS; [ $rebranche -gt 0 ] && t=0.5
   if [ -n "${MON[0]:-}" ]; then
-    read -r -t "$PAS" -u "${MON[0]}" _; rc=$?
+    read -r -t "$t" -u "${MON[0]}" _; rc=$?
     [ $rc -ne 0 ] && [ $rc -le 128 ] && { echo "garde HDMI : moniteur udev arrêté — minuterie seule"; unset MON; }
   else
-    sleep "$PAS"
+    sleep "$t"
   fi
   etat=$(cat "$STATUT" 2>/dev/null); maintenant=$(date +%s)
   if [ "$etat" != "$avant" ]; then
@@ -50,13 +57,20 @@ while :; do
     if [ "$etat" = connected ]; then rebranche=$maintenant; else rebranche=0; fi
     avant=$etat
   fi
-  # (1) rebranchement : relance dès que l'écran est branché depuis ATTENTE s (on repasse aussitôt sur la boucle)
+  # (1) rebranchement : une fois l'écran branché depuis ATTENTE s, AUTO + autre écran ⇒ relance ; sinon rien
   if [ $rebranche -gt 0 ]; then
     if [ $((maintenant - rebranche)) -ge "$ATTENTE" ]; then
-      rebranche=0
-      systemctl -q is-active pxl-preview && relancer "$NOM rebranché"
+      rebranche=0; nouveau=$(empreinte); m=$(mode_sortie)
+      if [ "$m" != auto ]; then
+        echo "garde HDMI : $NOM rebranché, mode forcé ($m) — rien à relancer"
+      elif [ "$nouveau" = "$ecran" ] && [ "$nouveau" != "$VIDE" ]; then
+        echo "garde HDMI : $NOM rebranché, même écran (AUTO) — rien à relancer"
+      else
+        systemctl -q is-active pxl-preview && relancer "$NOM rebranché, autre écran (AUTO)"
+      fi
+      [ "$nouveau" != "$VIDE" ] && ecran=$nouveau
     else
-      sleep 0.5; continue
+      continue
     fi
   fi
   # (2) filet : écran branché, preview censée tourner (pas arrêtée exprès), et aucun Video Port actif

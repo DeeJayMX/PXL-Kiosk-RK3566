@@ -9,6 +9,16 @@ export LIBSEAT_BACKEND=seatd
 # sur la TV du labo (mesuré le 03/10/2026 en demandant un 720p25 qu'elle ne déclare pas). Repli explicite et dit.
 MODE=$SORTIE_MODE
 LISTE=$(/usr/local/lib/pxl-kiosk/pxl-mode --liste "${SORTIE_NOM:-HDMI-A-1}" 2>/dev/null)
+# AUTO (/admin, 04/10/2026) : le premier mode de cette liste que l'écran déclare — cadences européennes d'abord, jamais
+# de 4K (Chromium écraserait la box, le flux writeback est en 1920×1080). Écran muet ⇒ 1080i50, le défaut de la régie.
+# C'est aussi en AUTO que la garde HDMI relance la preview quand on branche un AUTRE écran (pxl-hdmi-garde.sh).
+if [ "$MODE" = auto ]; then
+  MODE=1920x1080i@50
+  for m in ${SORTIE_AUTO_ORDRE:-1920x1080i@50 1920x1080@50 1280x720@50 1920x1080i@60 1920x1080@60 1280x720@60}; do
+    grep -qxF "$m" <<<"$LISTE" && { MODE=$m; break; }
+  done
+  echo "AUTO : $MODE"
+fi
 if [ -n "$LISTE" ] && ! grep -qxF "$MODE" <<<"$LISTE"; then
   for repli in 1280x720@50 1920x1080@50 1280x720@60 1920x1080@60; do grep -qxF "$repli" <<<"$LISTE" && break; done
   echo "⚠ $MODE absent de l'écran branché — repli sur $repli"
