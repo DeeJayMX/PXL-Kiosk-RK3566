@@ -240,3 +240,11 @@ Voir `README.md` pour la recette et `docs/README.md` pour l'index du dossier.
   jour J). Pas de popup sur l'écran de la box. Le premier « Vérifier » part du commit lu dans `VERSION-PXL`.
   ⚠ Il faut la clé de déploiement de la box sur `DeeJayMX/PXL-TurboHQ` (affichée dans /admin › Mises à jour) — sans
   elle : « GitHub refuse la clé de la box », vu le 04/10 sur la box.
+- ⚠️ **Version de recette notée sur la box : recalée à la main (05/10, 01 h 25)** — `/etc/pxl-kiosk/version` disait
+  `recette=1.15.2` et `maj.json` › `box.commit` = `9001a83`, alors que les fichiers avaient été posés un par un jusqu'à la
+  v1.24.0 (sans rejouer `installer.sh`) : /admin affichait donc une version FAUSSE. Contrôle avant de recaler : les 16
+  scripts / pages de `installation/fichiers/` présents sur la box ont la même empreinte sha256 que le dépôt
+  (`satellite-installer.sh` et `pxl-mode.c` ne sont pas posés tels quels), et les 9 services sont `enabled` + `active`.
+  Recalé à `1.24.0` / `20a5bd22d34f` ; anciens fichiers gardés en `*.avant-1.24.0`. ⚠ Ce contrôle ne couvre PAS les
+  unités systemd ni `/etc/pxl-kiosk.conf` écrites par `installer.sh` : un « box » rejoué depuis /admin reste le seul
+  état garanti. Leçon : **poser un fichier à la main, c'est aussi désynchroniser l'étiquette** — la relever dans le même geste.
