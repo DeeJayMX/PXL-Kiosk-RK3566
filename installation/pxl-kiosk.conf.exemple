@@ -26,9 +26,10 @@ APP_ENV=""
 # /ecran : la page choisie dans la console de l'habillage (⚙ Réglages : Preview ou Multiview A/B/C), bascule à chaud
 PREVIEW_URL=http://127.0.0.1:8765/ecran
 # Sortie HDMI. 25p mesuré fluide pour un élément seul (01/10/2026) ; la TV doit déclarer ce mode.
-# 720p par défaut depuis le 02/10 : 2,25× moins de pixels à dessiner pour Chromium (réglable dans /admin).
+# Défaut : 1080i50 FORCÉ (décision d'Eliott, 04/10/2026) — un rebranchement ne relance rien. « auto » = suit l'écran
+# branché (1080i50 › 1080p50 › 720p50 › 1080i60 › 1080p60 › 720p60), relance si on change d'écran. Réglable dans /admin.
 SORTIE_NOM=HDMI-A-1
-SORTIE_MODE=1280x720@25
+SORTIE_MODE=1920x1080i@50
 # En entrelacé (1920x1080i@50) : psf (défaut, décision du 03/10) = une image pour deux trames, 25 img/s, écran et flux
 # TurboHQ propres en mouvement (Weston patché requis) ; 50i = une image par trame, fluide. Réglable dans /admin.
 ENTRELACE=psf
