@@ -111,8 +111,10 @@ apt-get install -y -qq --no-install-recommends -o APT::Status-Fd=3 \
 progres 60 "paquets système"
 apt-cache policy chromium | grep -q 'Installed:.*rkmpp' || meurs "chromium installé n'est pas celui du PPA (rkmpp)"
 
-# ---- 2. Node 22 officiel (empreinte vérifiée) --------------------------------------------------
-NODE_IDX=https://nodejs.org/dist/latest-v22.x
+# ---- 2. Node 24 officiel (empreinte vérifiée) --------------------------------------------------
+# 24 et non plus 22 (04/10/2026) : Companion Satellite 3.4 exige Node ≥ 24.13 — un seul Node pour toute la box plutôt
+# qu'un second à côté. Le serveur d'habillage et /admin ont été essayés sous 24.21 (VM, x64).
+NODE_IDX=https://nodejs.org/dist/latest-v24.x
 NODE_TAR=$(curl -fsS $NODE_IDX/SHASUMS256.txt | awk '/linux-arm64\.tar\.xz$/{print $2}')
 NODE_VER=${NODE_TAR%-linux-arm64.tar.xz}
 if [ "$(/opt/node/bin/node -v 2>/dev/null)" != "${NODE_VER#node-}" ]; then
@@ -121,6 +123,11 @@ if [ "$(/opt/node/bin/node -v 2>/dev/null)" != "${NODE_VER#node-}" ]; then
   (cd "$T" && curl -fsS $NODE_IDX/SHASUMS256.txt | grep " $NODE_TAR\$" | sha256sum -c --quiet) || meurs "empreinte Node fausse"
   tar xJf "$T/$NODE_TAR" -C /opt && ln -sfn "/opt/$NODE_VER-linux-arm64" /opt/node && rm -rf "$T"
 fi
+
+# ---- 2 bis. Companion Satellite (Stream Deck USB → Companion de la régie), installé mais ARRÊTÉ : /admin l'active --
+progres 33 "Companion Satellite"
+SAT_NODE=/opt/node/bin/node bash "$ICI/fichiers/satellite-installer.sh" \
+  || dire "⚠️ Companion Satellite non installé (Bitfocus injoignable ?) : la box marche sans, /admin le dira"
 
 # ---- 3. Tailscale officiel ---------------------------------------------------------------------
 if ! command -v tailscale >/dev/null; then

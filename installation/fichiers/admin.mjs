@@ -30,7 +30,7 @@ const RETOUR_S = 90;                       // délai pour confirmer un changemen
 const NTP_LOCAUX = '/etc/chrony/sources.d/pxl-local.sources';
 const NM_DIR = '/etc/NetworkManager/system-connections';
 const PROFIL_ETH = 'pxl-ethernet';
-const JOURNAUX = ['pxl-maj-box', 'pxl-serveur', 'pxl-preview', 'pxl-admin', 'pxl-sante', 'chrony', 'NetworkManager', 'tailscaled'];
+const JOURNAUX = ['pxl-maj-box', 'pxl-serveur', 'pxl-preview', 'pxl-admin', 'pxl-sante', 'chrony', 'NetworkManager', 'tailscaled', 'pxl-satellite'];
 const RELANCABLES = ['pxl-serveur', 'pxl-preview'];
 
 const lireConf = () => { try { return Object.fromEntries(readFileSync('/etc/pxl-kiosk.conf', 'utf8').split('\n')
@@ -362,6 +362,70 @@ async function regleRelais(q) {
   exiger(r.ok, r.err);
   return {};
 }
+// ---------------------------------------------------------------- Companion Satellite (satellite-installer.sh)
+// Les Stream Deck branchés sur la box remontent comme surfaces dans un Companion distant. Réglé ICI en écrivant le
+// fichier de configuration de Satellite puis en le relançant : son API REST est coupée (sans mot de passe, sur toutes
+// les interfaces). Les ports par défaut sont ceux de Companion : TCP 16622, WebSocket 16623 (codés en dur chez lui).
+const SAT_DIR = '/opt/companion-satellite', SAT_CONF = '/var/lib/pxl-satellite/satellite-config.json';
+const SAT_PORTS = { tcp: 16622, ws: 16623 };
+const lireSatConf = () => { try { return JSON.parse(readFileSync(SAT_CONF, 'utf8')); } catch { return null; } };
+// vendeurs USB reconnus par Satellite : ceux de ses propres règles udev (Elgato 0fd9, Loupedeck, X-keys…)
+function vendeursSat() {
+  const t = lire(`${SAT_DIR}/50-satellite.rules`) || '';
+  return new Set([...t.matchAll(/ATTRS\{idVendor\}=="([0-9a-f]{4})"/gi)].map(m => m[1].toLowerCase()));
+}
+// les surfaces USB branchées, lues dans /sys : modèle, n° de série, et l'identifiant sous lequel Companion les connaîtra
+// (module Stream Deck de Satellite : « streamdeck:<n° de série> » — c'est à lui que Companion rattache page et réglages)
+function surfacesUsb() {
+  const v = vendeursSat(), out = [], d = '/sys/bus/usb/devices';
+  let ls = []; try { ls = readdirSync(d); } catch { return out; }
+  for (const n of ls) {
+    const ven = (lire(`${d}/${n}/idVendor`) || '').toLowerCase(); if (!ven || !v.has(ven)) continue;
+    const serie = lire(`${d}/${n}/serial`) || '';
+    out.push({ modele: lire(`${d}/${n}/product`) || `${ven}:${lire(`${d}/${n}/idProduct`)}`, fabricant: lire(`${d}/${n}/manufacturer`) || '',
+      serie, id: ven === '0fd9' && serie ? `streamdeck:${serie}` : null });
+  }
+  return out;
+}
+// connecté = une connexion TCP ÉTABLIE (état 01) de l'utilisateur satellite vers le port réglé
+async function satConnecte(port) {
+  const uid = (await run('id', ['-u', 'satellite'])).out.trim(); if (!uid) return false;
+  for (const f of ['/proc/net/tcp', '/proc/net/tcp6']) for (const l of (lire(f) || '').split('\n').slice(1)) {
+    const c = l.trim().split(/\s+/); if (c.length < 8) continue;
+    if (c[3] === '01' && c[7] === uid && parseInt(c[2].split(':')[1], 16) === port) return true;
+  }
+  return false;
+}
+function satAdresse(c) {   // { protocole, hote, port } depuis le fichier de Satellite
+  if (c.remoteProtocol === 'ws') { const m = /^wss?:\/\/\[?([^\]/]+?)\]?(?::(\d+))?(?:\/|$)/.exec(c.remoteWsAddress || '');
+    return { protocole: 'ws', hote: m ? m[1] : '', port: m && m[2] ? +m[2] : SAT_PORTS.ws }; }
+  return { protocole: 'tcp', hote: c.remoteIp || '', port: +c.remotePort || SAT_PORTS.tcp };
+}
+async function companion() {
+  const present = existsSync(`${SAT_DIR}/satellite/dist/main.js`), c = lireSatConf();
+  if (!present || !c) return { present, version: lire(`${SAT_DIR}/BUILD`), surfaces: [] };
+  const service = (await run('systemctl', ['is-active', 'pxl-satellite'])).out.trim(), a = satAdresse(c);
+  return { present, version: lire(`${SAT_DIR}/BUILD`), service, ...a, marque: c.installationName || '',
+    connecte: service === 'active' && await satConnecte(a.port), surfaces: surfacesUsb() };
+}
+async function regleCompanion(q) {
+  const actif = q.actif === '1' || q.actif === true || q.actif === 'true';
+  exiger(existsSync(`${SAT_DIR}/satellite/dist/main.js`), 'Companion Satellite absent sur la box (réinstaller la recette)');
+  const c = lireSatConf(); exiger(c, `configuration de Satellite illisible (${SAT_CONF})`);
+  const protocole = q.protocole === 'ws' ? 'ws' : 'tcp', hote = String(q.hote || '').trim();
+  const port = q.port === '' || q.port == null ? SAT_PORTS[protocole] : Math.round(+q.port);
+  exiger(estIp(hote) || estHote(hote), 'adresse du Companion invalide (IP ou nom de machine)');
+  exiger(port >= 1 && port <= 65535, 'port invalide (1 à 65535)');
+  if (protocole === 'ws') c.remoteWsAddress = `ws://${hote}:${port}`; else { c.remoteIp = hote; c.remotePort = port; }
+  Object.assign(c, { remoteProtocol: protocole, restEnabled: false });
+  writeFileSync(SAT_CONF + '.part', JSON.stringify(c, null, '\t') + '\n'); renameSync(SAT_CONF + '.part', SAT_CONF);
+  await run('chown', ['satellite:', SAT_CONF]);
+  const r = actif ? await run('systemctl', ['enable', '--now', 'pxl-satellite']).then(x => x.ok ? run('systemctl', ['restart', 'pxl-satellite']) : x)
+    : await run('systemctl', ['disable', '--now', 'pxl-satellite']);
+  exiger(r.ok, r.err);
+  return {};
+}
+
 // Les relais visibles sur le réseau local : la sonde « TURBOHQ? » de leur découverte (UDP 41808, discovery.mjs du dépôt
 // TurboHQ), en diffusion sur chaque interface + la boucle locale. ⚠ Rien ne traverse un routeur ni le tailnet : un relais
 // en 100.x ne répond jamais ici — la saisie manuelle de l'adresse reste le chemin qui marche toujours.
@@ -594,7 +658,7 @@ async function api(req, u, q) {
   const p = u.pathname;
   if (p === '/api/etat') {
     const [r, e, w, h, m, s, v] = await Promise.all([reseau(), ethernet(), wifi(), heure(), machine(), surveillance(), versions()]);
-    return { reseau: r, ethernet: e, wifi: w, heure: h, machine: m, materiel: materiel(), surveillance: s, versions: v, mode: mode(), ecran: await ecran(), wb: await wb(), relais: await relais(), secours: await secours(), retour: retourEnCours(), retour_s: RETOUR_S };
+    return { reseau: r, ethernet: e, wifi: w, heure: h, machine: m, materiel: materiel(), surveillance: s, versions: v, mode: mode(), ecran: await ecran(), wb: await wb(), relais: await relais(), companion: await companion(), secours: await secours(), retour: retourEnCours(), retour_s: RETOUR_S };
   }
   if (p === '/api/wifi/scan') {
     const r = await run('nmcli', ['-t', '-f', 'SSID,SIGNAL,SECURITY', 'dev', 'wifi', 'list', '--rescan', 'yes'], { timeout: 30000 });
@@ -652,6 +716,7 @@ async function actionPost(p, q) {
     case '/api/ecran': return regleEcran(q);
     case '/api/wb': return regleWb(q);
     case '/api/relais': return regleRelais(q);
+    case '/api/companion': return regleCompanion(q);
     case '/api/secours': return regleSecours(q);
     case '/api/relais/decouverte': return { relais: await decouvrir() };
     // mises à jour depuis GitHub (maj.mjs) — une seule à la fois

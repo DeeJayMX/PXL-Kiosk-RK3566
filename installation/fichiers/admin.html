@@ -232,6 +232,29 @@
   </section>
 
   <section data-onglet="habillage">
+    <h2>Companion (Satellite) <span class="aide" tabindex="0">❔<span class="aide-texte">Les Stream Deck branchés en
+      USB sur cette box apparaissent comme surfaces dans le Companion de la régie (Bitfocus Companion Satellite). Dans
+      Companion, la box se présente sous le nom « PixelMasters PXLnode » (Surfaces › Discover). Changer un réglage relance
+      Satellite : les touches s'éteignent une ou deux secondes.</span></span></h2>
+    <form id="f-companion">
+      <label><input type="checkbox" id="cp-actif" style="width:auto"> Relais Satellite en service</label>
+      <div class="ligne">
+        <div><label for="cp-hote">Serveur Companion <span class="aide" tabindex="0">❔<span class="aide-texte">Adresse IP ou
+          nom de la machine qui fait tourner Companion (par ex. le PC de la régie).</span></span></label><input id="cp-hote" placeholder="192.168.1.20"></div>
+        <div><label for="cp-proto">Connexion <span class="aide" tabindex="0">❔<span class="aide-texte"><b>TCP</b> (port
+          16622) : le mode d'origine, le plus direct. <b>WebSocket</b> (port 16623) : passe mieux les proxys et certains
+          pare-feu. Ce sont les deux seuls modes de Satellite.</span></span></label><select id="cp-proto"><option value="tcp">TCP</option><option value="ws">WebSocket</option></select></div>
+        <div><label for="cp-port">Port</label><input id="cp-port" type="number" min="1" max="65535" placeholder="16622"></div>
+      </div>
+      <div class="actions"><button class="principal" type="submit">Appliquer — relance Satellite</button></div>
+    </form>
+    <div id="cp-etat" class="note"></div>
+    <div class="table"><table id="cp-t" class="cache"><thead><tr><th>Surface branchée</th><th>N° de série</th><th>Identifiant dans Companion <span class="aide" tabindex="0">❔<span class="aide-texte">Fixé par
+      le numéro de série du Stream Deck : c'est à lui que Companion rattache la page et les réglages de la surface. Il ne
+      change pas d'une box à l'autre ni d'un port USB à l'autre.</span></span></th></tr></thead><tbody id="cp-surfaces"></tbody></table></div>
+  </section>
+
+  <section data-onglet="habillage">
     <h2>Mises à jour <span class="aide" tabindex="0">❔<span class="aide-texte">Source : GitHub. « Vérifier » ne change rien ; « Appliquer » installe la dernière version poussée sur
       <b>main</b>. L'application garde l'état de la régie et les photos. En direct : si seules les pages changent, le serveur
       n'est pas relancé (les pages se rechargent d'elles-mêmes).</span></span></h2>
@@ -471,6 +494,24 @@ function rendre() {
         + (u.adresse ? ` · ${esc(u.adresse)}` : ' · en attente d’adresse') + (u.passerelle ? ` · Internet par ${esc(u.passerelle)}` : '')).join('<br>')
       : '○ aucun téléphone branché' + (sc.usbmuxd ? '' : ' · <span class="ko">usbmuxd absent (iPhone)</span>');
   }
+  // Companion (Satellite)
+  const cp = E.companion;
+  if (cp) {
+    if (!$('#f-companion').dataset.touche && cp.present && cp.protocole) {
+      $('#cp-actif').checked = cp.service === 'active'; $('#cp-hote').value = cp.hote; $('#cp-proto').value = cp.protocole;
+      $('#cp-port').value = cp.port; $('#cp-port').placeholder = cp.protocole === 'ws' ? '16623' : '16622';
+    }
+    $('#cp-etat').innerHTML = !cp.present ? '<span class="ko">Companion Satellite absent sur la box (réinstaller la recette).</span>'
+      : !cp.protocole ? '<span class="ko">Configuration de Satellite illisible.</span>'
+      : `<span class="${cp.service !== 'active' ? 'ko' : cp.connecte ? 'ok' : 'moyen'}">● ${cp.service !== 'active' ? (cp.service === 'inactive' ? 'arrêté' : esc(cp.service))
+          : cp.connecte ? 'connecté à Companion' : 'en service, PAS connecté'}</span> · ${cp.protocole === 'ws' ? 'ws' : 'tcp'}://${esc(cp.hote)}:${cp.port}`
+        + ` · nom « ${esc(cp.marque)} » · Satellite ${esc(cp.version || '?')}`
+        + (cp.service === 'active' && !cp.connecte ? '<br>Vérifier l’adresse, le type de connexion et que Companion tourne (il écoute en TCP 16622 et WebSocket 16623).' : '');
+    $('#cp-t').classList.toggle('cache', !cp.surfaces.length && !cp.present);
+    $('#cp-surfaces').innerHTML = cp.surfaces.length ? cp.surfaces.map(u => `<tr><td>${esc(u.modele)}${u.fabricant ? ` <small style="display:inline;color:var(--doux)">${esc(u.fabricant)}</small>` : ''}</td>
+      <td>${esc(u.serie || '—')}</td><td><code>${esc(u.id || '—')}</code></td></tr>`).join('')
+      : '<tr><td colspan="3" class="note">Aucune surface USB branchée (Stream Deck, Loupedeck, X-keys…).</td></tr>';
+  }
   // Relais local
   const rl = E.relais;
   if (rl) {
@@ -694,6 +735,16 @@ $('#wb-chercher').addEventListener('click', ev => {
 $('#wb-trouves').addEventListener('click', ev => { const u = ev.target.dataset && ev.target.dataset.relais;
   if (u) { $('#wb-url').value = u; $('#f-wb').dataset.touche = 1; } });
 $('#f-relais').addEventListener('input', () => { $('#f-relais').dataset.touche = 1; });
+$('#f-companion').addEventListener('input', ev => { $('#f-companion').dataset.touche = 1;
+  // changer de type de connexion propose le port par défaut de Companion pour ce type
+  if (ev.target.id === 'cp-proto') { const v = $('#cp-proto').value === 'ws' ? 16623 : 16622, p = $('#cp-port');
+    p.placeholder = v; if (!p.value || +p.value === 16622 || +p.value === 16623) p.value = v; } });
+$('#f-companion').addEventListener('submit', ev => {
+  ev.preventDefault();
+  action(ev.submitter, async () => { await appel('/api/companion', { actif: $('#cp-actif').checked ? '1' : '0', hote: $('#cp-hote').value,
+    protocole: $('#cp-proto').value, port: $('#cp-port').value }); delete $('#f-companion').dataset.touche; },
+    $('#cp-actif').checked ? 'Satellite relancé' : 'Satellite arrêté');
+});
 $('#f-ap').addEventListener('input', () => { $('#f-ap').dataset.touche = 1; });
 $('#f-ap').addEventListener('submit', ev => {
   ev.preventDefault();

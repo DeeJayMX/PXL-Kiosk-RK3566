@@ -47,6 +47,7 @@ TS_AUTHKEY=tskey-… bash installation/installer.sh
 | `pxl-ntp-facade` | **« ntP » clignote sur la façade** tant que l'heure n'est pas synchronisée (la box n'a pas d'horloge sauvegardée), puis `SYnC` | — |
 | `chrony` + `chrony-wait` | sources : **Observatoire de Paris** (`ntp.obspm.fr`, SYRTE), Sorbonne (`ntp1.jussieu.fr`), `fr.pool.ntp.org`, + le NTP annoncé par DHCP ; le serveur d'habillage attend l'heure 60 s au plus | — |
 | `pxl-secours-reseau` · `pxl-cec-nom` · `pxl-relais` · `turbohq-console` | repris de la TurboNode : adresse de secours **192.168.55.230/24** sans DHCP · nom CEC « PXL HABILLAGE » · relais TurboHQ :8080 (**sans** la clé ni les certificats de la TurboNode) · console :8088 | — |
+| `pxl-satellite` | **Companion Satellite** (Bitfocus, build officiel v3.4.1 épinglé, empreinte vérifiée) : les Stream Deck / Loupedeck / X-keys branchés en USB sur la box deviennent des surfaces du Companion de la régie. Installé **arrêté** ; activé et réglé dans **/admin › Habillage › Companion** (serveur, TCP 16622 ou WebSocket 16623, port). Se présente dans Companion (Surfaces › Discover) sous le nom **« PixelMasters PXLnode »**. API REST de Satellite **coupée** (sans mot de passe, sur toutes les interfaces) : /admin écrit `/var/lib/pxl-satellite/satellite-config.json` et relance. Utilisateur `satellite`, règles udev du paquet. Exige **Node ≥ 24.13** — d'où Node 24 sur toute la box (04/10/2026) | — |
 | `pxl-telecommande` | **OK** = recharger la preview (`rELd`) · **Menu/Accueil** = IP sur la façade · **Power maintenu 3 s** = redémarrer (3-2-1, `boot`). Télécommande IR **et** TV par HDMI-CEC ; ces touches sont **retirées à Weston/Chromium et à logind** (sinon « Retour » quittait la preview et « Power » éteignait la box) | — |
 
 | `pxl-admin` | **page d'administration** `http://<box>:8791/` (aussi `:8790/admin`), mot de passe dédié : état réseau, **Ethernet** DHCP / IP fixe, **Wi-Fi** (recherche, ajout, priorité, suppression), **heure** (sources, serveurs NTP locaux, mise à l'heure du navigateur), services, journal, redémarrage. Tout changement réseau doit être **confirmé** : sinon retour seul à l'ancien réglage au bout de 90 s (minuteur systemd) | — |
@@ -91,6 +92,11 @@ curl http://<NOM_MACHINE>:8790/sante.txt    # depuis le tailnet
   doit valoir au moins 1.
 - **Chromium en utilisateur non-root** : le chroot tournait en root avec `--no-sandbox`. Ici, il tourne en `pxl`
   avec `chromium-sandbox` (setuid). À confirmer au premier lancement : `journalctl -u pxl-preview`.
+- **Companion Satellite sur la box** (04/10/2026) : vérifié sur la VM de développement en x64 seulement — installation
+  par `satellite-installer.sh`, connexion à un Companion 5.0.7 en TCP **et** en WebSocket, nom « PixelMasters PXLnode »
+  dans sa découverte, section /admin (état, bascule TCP ↔ WebSocket, refus d'une adresse invalide), liste des surfaces
+  sur un faux bus USB. **Jamais lancé en arm64 sur la RK3566, jamais avec un vrai Stream Deck** : au premier essai,
+  `journalctl -u pxl-satellite` et la liste « Surface branchée » de /admin.
 - **Endurance 24 h** : `urban-trail-2026/outils/endurance.js` sur la box, avant un événement.
 - **Preview** mesurée en 25p (01/10) : un élément seul tient 23-26 img/s ; la carte 19 et la séquence complète 13.
   Ça convient pour un moniteur de contrôle, pas pour l'antenne.
