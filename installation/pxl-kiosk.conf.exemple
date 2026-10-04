@@ -33,6 +33,10 @@ SORTIE_MODE=1920x1080i@50
 # En entrelacé (1920x1080i@50) : psf (défaut, décision du 03/10) = une image pour deux trames, 25 img/s, écran et flux
 # TurboHQ propres en mouvement (Weston patché requis) ; 50i = une image par trame, fluide. Réglable dans /admin.
 ENTRELACE=psf
+# Format du signal HDMI (le LIEN, pas le dessin) : rgb | ycbcr422 | ycbcr444 | auto, profondeur 8 | 10. ycbcr422 + 10 =
+# convertisseur SDI / mélangeur. Retombe en RGB 8 sans erreur si l'écran ne déclare pas le format. Réglable dans /admin.
+LIEN_FORMAT=rgb
+LIEN_PROFONDEUR=8
 
 # --- Wi-Fi de secours et partage de connexion USB ---------------------------------------------
 # Point d'accès quand aucun Wi-Fi connu n'est visible (auto), toujours (force), ou jamais (off). Bande : bg = 2,4 GHz

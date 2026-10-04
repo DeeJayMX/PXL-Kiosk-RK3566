@@ -155,7 +155,10 @@
       brancher un AUTRE écran relance la sortie (~10 s de noir), rebrancher le même ne relance rien. En 1080i :
       <b>fluide</b> = une image par trame, mouvement fluide à l'écran mais le flux TurboHQ « peigne » ce qui bouge ;
       <b>PsF</b> = une image pour deux trames (25 img/s en 1080i50, 30 en 1080i60), écran et flux propres même en
-      mouvement, et deux fois moins de travail pour Chromium. Ce qui s'affiche (Preview,
+      mouvement, et deux fois moins de travail pour Chromium.
+      <b>Format du signal</b> : YUV 4:2:2 10 bits pour un convertisseur SDI ou un mélangeur (la box convertit sans
+      coût ; l'habillage reste dessiné en 8 bits). Si l'écran ne déclare pas le format, la box retombe en RGB 8 bits :
+      la ligne « Émis en ce moment » dit ce qui sort vraiment. Ce qui s'affiche (Preview,
       Multiview) se choisit dans la console de l'habillage, ⚙ Réglages.</span></span></h2>
     <form id="f-ecran">
       <div class="ligne">
@@ -163,6 +166,14 @@
         <div id="bloc-entrelace"><label for="ecran-entrelace">Cadence en entrelacé</label><select id="ecran-entrelace">
           <option value="50i">Une image par trame — fluide</option><option value="psf">Une image pour deux trames (PsF) — propre</option></select></div>
       </div>
+      <div class="ligne">
+        <div><label for="ecran-lien-format">Format du signal</label><select id="ecran-lien-format">
+          <option value="rgb">RGB (défaut)</option><option value="ycbcr422">YUV 4:2:2 — SDI / mélangeur</option>
+          <option value="ycbcr444">YUV 4:4:4</option><option value="auto">AUTO — choisi par l’écran (varie d’un écran à l’autre)</option></select></div>
+        <div><label for="ecran-lien-prof">Profondeur</label><select id="ecran-lien-prof">
+          <option value="8">8 bits (défaut)</option><option value="10">10 bits</option></select></div>
+      </div>
+      <p class="note" id="ecran-emis"></p>
       <div class="actions"><button class="principal" type="submit">Appliquer — relance l'écran</button></div>
     </form>
   </section>
@@ -459,6 +470,15 @@ function rendre() {
       + (ec.modes.includes(ec.mode) ? '' : `<option value="" disabled>${esc(ec.mode || '?')}</option>`);
     $('#ecran-mode').value = ec.modes.includes(ec.mode) ? ec.mode : '';
     $('#ecran-entrelace').value = ec.entrelace || '50i';
+    $('#ecran-lien-format').value = ec.lienFormat || 'rgb'; $('#ecran-lien-prof').value = ec.lienProfondeur || '8';
+  }
+  if (ec) {   // ce que le pilote émet VRAIMENT : il retombe en RGB / 8 bits, sans rien dire, si l'écran refuse le format
+    const BUS = { RGB888_1X24: 'RGB · 8 bits', RGB101010_1X30: 'RGB · 10 bits', YUV8_1X24: 'YUV 4:4:4 ou 4:2:2 · 8 bits',
+      YUV10_1X30: 'YUV 4:4:4 ou 4:2:2 · 10 bits', UYYVYY8_0_5X24: 'YUV 4:2:0 · 8 bits', UYYVYY10_0_5X30: 'YUV 4:2:0 · 10 bits' };
+    const attendu = { rgb: /^RGB/, ycbcr422: /^YUV/, ycbcr444: /^YUV/, auto: /./ }[ec.lienFormat || 'rgb'];
+    const prof = ec.lienFormat === 'auto' ? /./ : ec.lienProfondeur === '10' ? /(101010|10_)/ : /8_/;
+    const b = ec.busFormat, ok = b && attendu.test(b) && prof.test(b);
+    $('#ecran-emis').innerHTML = b ? `Émis en ce moment : <b>${esc(BUS[b] || b)}</b>${ok ? '' : ' — ⚠ pas ce qui est demandé : l’écran ne déclare pas ce format, le pilote est retombé'}` : 'Émis en ce moment : inconnu (écran éteint ?)';
   }
   $('#bloc-entrelace').hidden = !/i@|auto/.test($('#ecran-mode').value || '');
   // Flux TurboHQ
@@ -703,7 +723,8 @@ $('#f-ecran').addEventListener('input', () => { $('#f-ecran').dataset.touche = 1
   $('#bloc-entrelace').hidden = !/i@|auto/.test($('#ecran-mode').value || ''); });
 $('#f-ecran').addEventListener('submit', ev => {
   ev.preventDefault();
-  action(ev.submitter, async () => { await appel('/api/ecran', { mode: $('#ecran-mode').value, entrelace: $('#ecran-entrelace').value });
+  action(ev.submitter, async () => { await appel('/api/ecran', { mode: $('#ecran-mode').value, entrelace: $('#ecran-entrelace').value,
+      lienFormat: $('#ecran-lien-format').value, lienProfondeur: $('#ecran-lien-prof').value });
     delete $('#f-ecran').dataset.touche; }, 'écran relancé');
 });
 $('#f-wb').addEventListener('input', () => { $('#f-wb').dataset.touche = 1; });

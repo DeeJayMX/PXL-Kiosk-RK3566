@@ -223,12 +223,24 @@ const ENTRELACES = ['50i', 'psf'];
 // Les modes que l'écran BRANCHÉ déclare (pxl-mode --liste) : un mode absent n'est pas refusé — on règle parfois la box
 // pour la TV du lieu —, mais il est signalé, et preview.sh se replie explicitement (sans quoi Weston prendrait le mode
 // préféré de l'écran : 3840x2160p60 sur la TV du labo, mesuré le 03/10/2026 sur un 720p25 qu'elle ne déclare pas).
+// Format du LIEN HDMI (05/10/2026, Eliott : « Le SDI ! et le 10 bits est mieux traité dans un environnement mélangeur »).
+// Posé par preview.sh (pxl-mode --couleur) avant tout modeset. Le pilote retombe EN SILENCE en RGB / 8 bits si l'écran ne
+// déclare pas le format : on affiche donc le bus_format RÉELLEMENT émis, lu dans le summary du VOP2 (la seule vérité).
+// « auto » = choix du pilote selon l'EDID (4:4:4 › 4:2:2 › RGB) : il varie d'un écran à l'autre — défaut : RGB 8 bits.
+// ⚠ 4:2:2 et 4:4:4 en 10 bits rendent le MÊME bus_format (YUV10_1X30) : la box ne les distingue pas (TurboNode, DIX_BITS).
+const LIEN_FORMATS = ['rgb', 'ycbcr422', 'ycbcr444', 'auto'], LIEN_PROFONDEURS = ['8', '10'];
+function busFormat() {
+  const m = /bus_format\[[0-9a-f]+\]: (\S+)/.exec(lire('/sys/kernel/debug/dri/0/summary') || '');
+  return m ? m[1] : null;
+}
 async function ecran() {
   const c = lireConf();
   const l = await run('/usr/local/lib/pxl-kiosk/pxl-mode', ['--liste', c.SORTIE_NOM || 'HDMI-A-1']);
   const declares = l.ok && l.out.trim() ? new Set(l.out.trim().split('\n')) : null;
   return { mode: c.SORTIE_MODE || null, modes: MODES_HDMI, dispo: declares ? MODES_HDMI.filter(m => m === 'auto' || declares.has(m)) : null,
-    entrelace: ENTRELACES.includes(c.ENTRELACE) ? c.ENTRELACE : 'psf', entrelaces: ENTRELACES };
+    entrelace: ENTRELACES.includes(c.ENTRELACE) ? c.ENTRELACE : 'psf', entrelaces: ENTRELACES,
+    lienFormat: LIEN_FORMATS.includes(c.LIEN_FORMAT) ? c.LIEN_FORMAT : 'rgb', lienProfondeur: LIEN_PROFONDEURS.includes(c.LIEN_PROFONDEUR) ? c.LIEN_PROFONDEUR : '8',
+    lienFormats: LIEN_FORMATS, lienProfondeurs: LIEN_PROFONDEURS, busFormat: busFormat() };
 }
 const poserLigne = (texte, cle, valeur) => { const re = new RegExp(`^\\s*${cle}=.*$`, 'm'), l = `${cle}=${valeur}`;
   return re.test(texte) ? texte.replace(re, l) : texte.replace(/\n?$/, '\n') + l + '\n'; };
@@ -238,6 +250,10 @@ async function regleEcran(q) {
   exiger(q.entrelace === undefined || ENTRELACES.includes(q.entrelace), 'cadence d\'entrelacé inconnue');
   let conf = poserLigne(readFileSync(CONF, 'utf8'), 'SORTIE_MODE', q.mode);
   if (q.entrelace !== undefined) conf = poserLigne(conf, 'ENTRELACE', q.entrelace);
+  exiger(q.lienFormat === undefined || LIEN_FORMATS.includes(q.lienFormat), 'format du lien inconnu');
+  exiger(q.lienProfondeur === undefined || LIEN_PROFONDEURS.includes(String(q.lienProfondeur)), 'profondeur du lien inconnue');
+  if (q.lienFormat !== undefined) conf = poserLigne(conf, 'LIEN_FORMAT', q.lienFormat);
+  if (q.lienProfondeur !== undefined) conf = poserLigne(conf, 'LIEN_PROFONDEUR', String(q.lienProfondeur));
   ecrireAtomique(CONF, conf);
   if (existsSync(WESTON_INI)) ecrireAtomique(WESTON_INI, poserLigne(readFileSync(WESTON_INI, 'utf8'), 'mode', q.mode.includes('i@') || q.mode === 'auto' ? 'current' : q.mode));
   const r = await run('systemctl', ['restart', 'pxl-preview']); exiger(r.ok, r.err);

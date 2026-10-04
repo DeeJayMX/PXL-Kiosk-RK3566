@@ -3,6 +3,16 @@
 //
 //   pxl-mode 1920x1080i@50 [HDMI-A-1]
 //   pxl-mode --liste [HDMI-A-1]        les modes que l'écran déclare, un par ligne (« 1280x720@50 », « 1920x1080i@50 »)
+//   pxl-mode --couleur FORMAT PROF [HDMI-A-1]   format du LIEN HDMI : rgb | ycbcr444 | ycbcr422 | ycbcr420 | auto,
+//                                      profondeur 8 | 10 | auto. Ne pose AUCUN mode : vaut pour le prochain modeset.
+//
+// ⚠ --couleur (05/10/2026) : propriétés Rockchip « color_format » / « color_depth » du connecteur. Weston ne les connaît
+// pas et ne les touche pas ; le pilote les range dans SA structure (hdmi->hdmi_output / colordepth, lu dans
+// dw_hdmi-rockchip.c, rockchip-linux develop-6.1) et les relit à CHAQUE modeset — d'où l'appel AVANT pxl-mode/Weston.
+// Le pilote ne fait qu'ESSAYER : un format absent de l'EDID de l'écran retombe en RGB, un 10 bits sans « deep color »
+// déclaré retombe en 8, sans erreur. La vérité est « bus_format » dans /sys/kernel/debug/dri/0/summary.
+// « auto » = ycbcr_high_subsampling du pilote : 4:4:4 si l'écran le déclare, sinon 4:2:2, sinon RGB — il dépend donc de
+// l'écran ET (en 10 bits) du format précédent du lien : non déterministe, à ne pas prendre pour une régie.
 //
 // ⚠ La liste sert à NE PAS demander un mode absent : Weston prend alors le mode PRÉFÉRÉ de l'écran sans rien dire —
 // 3840x2160p60 sur la TV du labo (mesuré le 03/10/2026, en demandant un 720p25 qu'elle ne déclare pas).
@@ -44,9 +54,62 @@ static int lister(const char *voulu) {
 	return 0;
 }
 
+static uint32_t prop(int fd, uint32_t obj, const char *nom, const char *enumere, uint64_t *val) {
+	drmModeObjectProperties *p = drmModeObjectGetProperties(fd, obj, DRM_MODE_OBJECT_CONNECTOR);
+	uint32_t id = 0;
+	for (unsigned i = 0; p && i < p->count_props && !id; i++) {
+		drmModePropertyRes *q = drmModeGetProperty(fd, p->props[i]);
+		if (q && !strcmp(q->name, nom)) {
+			if (!enumere) id = q->prop_id;
+			else for (int e = 0; e < q->count_enums; e++) if (!strcmp(q->enums[e].name, enumere)) { id = q->prop_id; *val = q->enums[e].value; }
+		}
+		drmModeFreeProperty(q);
+	}
+	drmModeFreeObjectProperties(p);
+	return id;
+}
+
+static int couleur(const char *format, const char *prof, const char *voulu) {
+	const char *f = !strcmp(format, "auto") ? "ycbcr_high_subsampling" : format;
+	const char *d = !strcmp(prof, "10") ? "30bit" : !strcmp(prof, "8") ? "24bit" : !strcmp(prof, "auto") ? "Automatic" : NULL;
+	if (!d || (strcmp(f, "rgb") && strcmp(f, "ycbcr444") && strcmp(f, "ycbcr422") && strcmp(f, "ycbcr420") && strcmp(f, "ycbcr_high_subsampling"))) {
+		fprintf(stderr, "pxl-mode : couleur inconnue (%s %s)\n", format, prof); return 1; }
+	int fd = open("/dev/dri/card0", O_RDWR | O_CLOEXEC);
+	if (fd < 0) { perror("pxl-mode : /dev/dri/card0"); return 1; }
+	if (drmSetMaster(fd)) fprintf(stderr, "pxl-mode : pas maître DRM (%s) — on essaie quand même\n", strerror(errno));
+	drmModeRes *res = drmModeGetResources(fd);
+	if (!res) return 1;
+	int rc = 1;
+	for (int k = 0; k < res->count_connectors; k++) {
+		drmModeConnector *x = drmModeGetConnector(fd, res->connectors[k]);
+		char n[32]; snprintf(n, sizeof n, "%s-%u", nom_type(x->connector_type), x->connector_type_id);
+		if (!strcmp(n, voulu)) {
+			uint64_t vf = 0, vd = 0;
+			uint32_t pf = prop(fd, x->connector_id, "color_format", f, &vf), pd = prop(fd, x->connector_id, "color_depth", d, &vd);
+			uint32_t pb = prop(fd, x->connector_id, "max bpc", NULL, NULL);
+			if (!pf || !pd) fprintf(stderr, "pxl-mode : %s sans color_format/color_depth (pilote non Rockchip ?)\n", voulu);
+			else {
+				rc = 0;
+				// « max bpc » (8..16) : Weston le recopie, et 0 fait refuser son premier commit (cause de l'écran noir, 04/10)
+				if (pb && drmModeConnectorSetProperty(fd, x->connector_id, pb, !strcmp(prof, "8") ? 8 : 10)) rc = 1;
+				if (drmModeConnectorSetProperty(fd, x->connector_id, pf, vf)) { perror("pxl-mode : color_format"); rc = 1; }
+				if (drmModeConnectorSetProperty(fd, x->connector_id, pd, vd)) { perror("pxl-mode : color_depth"); rc = 1; }
+				if (!rc) printf("pxl-mode : lien %s demandé en %s / %s (vérité : bus_format du summary)\n", voulu, f, d);
+			}
+		}
+		drmModeFreeConnector(x);
+	}
+	drmDropMaster(fd);
+	return rc;
+}
+
 int main(int argc, char **argv) {
 	if (argc < 2) { fprintf(stderr, "usage : pxl-mode LxH[i]@R [connecteur] | --liste [connecteur]\n"); return 1; }
 	if (!strcmp(argv[1], "--liste")) return lister(argc > 2 ? argv[2] : "HDMI-A-1");
+	if (!strcmp(argv[1], "--couleur")) {
+		if (argc < 4) { fprintf(stderr, "usage : pxl-mode --couleur FORMAT PROF [connecteur]\n"); return 1; }
+		return couleur(argv[2], argv[3], argc > 4 ? argv[4] : "HDMI-A-1");
+	}
 	int l, h, r; char i = 0;
 	if (sscanf(argv[1], "%dx%d%c@%d", &l, &h, &i, &r) != 4) { i = 0; if (sscanf(argv[1], "%dx%d@%d", &l, &h, &r) != 3) return 1; }
 	int entrelace = (i == 'i');

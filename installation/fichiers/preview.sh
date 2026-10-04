@@ -25,6 +25,14 @@ if [ -n "$LISTE" ] && ! grep -qxF "$MODE" <<<"$LISTE"; then
   MODE=$repli
 fi
 
+# Format du LIEN HDMI (05/10/2026, demande d'Eliott : 4:2:2 10 bits pour un convertisseur SDI / un mélangeur) — posé AVANT
+# tout modeset, Weston ne connaît pas ces propriétés Rockchip et ne les touche pas. Chromium dessine toujours en RGB 8 bits :
+# c'est le VOP2 qui convertit vers le lien, sans coût. Le pilote retombe en RGB / 8 bits si l'écran ne déclare pas le
+# format demandé — sans erreur : /admin affiche le bus_format réellement émis. Défaut : RGB 8 bits (le réglage d'origine).
+LIEN_FORMAT=${LIEN_FORMAT:-rgb}; LIEN_PROFONDEUR=${LIEN_PROFONDEUR:-8}
+/usr/local/lib/pxl-kiosk/pxl-mode --couleur "$LIEN_FORMAT" "$LIEN_PROFONDEUR" "${SORTIE_NOM:-HDMI-A-1}" || true
+BPC=10; [ "$LIEN_PROFONDEUR" = 8 ] && BPC=8
+
 # Mode entrelacé (1080i50) : Weston ne sait pas le choisir (il prend le 1080p50) — pxl-mode le pose d'abord, et Weston
 # lit alors « mode=current ». Échec ⇒ on continue : Weston prendra le mode courant, quel qu'il soit.
 case "$MODE" in *i@*) /usr/local/lib/pxl-kiosk/pxl-mode "$MODE" "${SORTIE_NOM:-HDMI-A-1}" || true; WMODE=current; sleep 1 ;; *) WMODE=$MODE ;; esac
@@ -43,8 +51,8 @@ INI="$XDG_RUNTIME_DIR/weston.ini"
 FENETRE=; case "$MODE" in *i@*) [ "${ENTRELACE:-psf}" = psf ] && FENETRE=15 ;; esac
 # 🔴 max-bpc=8 : la VRAIE cause de l'écran noir (04/10 au soir, prouvée par un espion libdrm sur le commit refusé) — Weston
 # recopie la valeur courante de la propriété « max bpc » du connecteur, qui vaut 0 après un démarrage alors que le noyau
-# n'accepte que 8..16 : tout le commit est refusé (EINVAL), Weston ne réessaie pas. Le lien HDMI est en RGB 8 bits.
-sed "/^repaint-window=/d; /^max-bpc=/d; s/^mode=.*/mode=$WMODE\nmax-bpc=8/${FENETRE:+; s/^\\[core\\]\$/[core]\\nrepaint-window=$FENETRE/}" /etc/pxl-kiosk/weston.ini > "$INI"
+# n'accepte que 8..16 : tout le commit est refusé (EINVAL), Weston ne réessaie pas. 10 quand le lien est demandé en 10 bits.
+sed "/^repaint-window=/d; /^max-bpc=/d; s/^mode=.*/mode=$WMODE\nmax-bpc=$BPC/${FENETRE:+; s/^\\[core\\]\$/[core]\\nrepaint-window=$FENETRE/}" /etc/pxl-kiosk/weston.ini > "$INI"
 
 weston --config="$INI" --log="$XDG_RUNTIME_DIR/weston.log" &
 WESTON=$!

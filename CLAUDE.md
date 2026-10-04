@@ -145,3 +145,27 @@ Voir `README.md` pour la recette et `docs/README.md` pour l'index du dossier.
   Les deux filets (relance si refus, garde « Video Port sans plan ») restent.
   ⚠️ Leçon : un `--sleep` qui « aide une fois sur deux » n'a rien prouvé — lire ce que le programme ENVOIE au noyau.
 
+
+## Signal HDMI en YUV 4:2:2 / 10 bits (05/10/2026, v1.17.0)
+
+- Demande d'Eliott : *« Le SDI ! et le 10 bits est mieux traité dans un environnement mélangeur. »* Réglé dans /admin ›
+  Écran (`LIEN_FORMAT` rgb | ycbcr422 | ycbcr444 | auto, `LIEN_PROFONDEUR` 8 | 10). **Défaut : RGB 8 bits** (décision
+  d'Eliott), c'est-à-dire le réglage d'avant.
+- Mécanisme (repris de TurboNode, `DIX_BITS.md`) : propriétés Rockchip `color_format` / `color_depth` du connecteur,
+  posées par `pxl-mode --couleur` dans `preview.sh` **avant** tout modeset — Weston ne les connaît pas. ⚠️ Weston étant
+  maître DRM, les poser à chaud est refusé (`Permission denied`, mesuré) : il faut relancer la preview.
+- **Lu dans le pilote** (`dw_hdmi-rockchip.c`, rockchip-linux develop-6.1 — pas exactement le noyau ophub de la box) :
+  la demande est rangée dans la structure du pilote (`hdmi->hdmi_output`, `colordepth`), pas dans l'état du connecteur,
+  et relue à chaque modeset ; **un format absent de l'EDID retombe en RGB, un 10 bits sans « deep color » en 8, sans
+  erreur**. Le 4:2:2 accepte toujours le 10 bits. `max bpc` n'y est pas consulté (preview.sh le pose quand même à 10).
+  « auto » = `ycbcr_high_subsampling` : 4:4:4 › 4:2:2 › RGB selon l'écran, et en 10 bits il dépend aussi du format
+  PRÉCÉDENT du lien (`prev_bus_format`) ⇒ **non déterministe**, à ne pas prendre pour une régie.
+- ✅ **Mesuré sur la box (TV Samsung, 1080i50 PsF)** : `ycbcr422`+`10` ⇒ `bus_format YUV10_1X30`, `max bpc` 10, image
+  de Weston active (après les 30 s du tampon de pxl-mode), flux writeback à 24,7-24,9 img/s, 0 paire cassée. Retour en
+  `rgb`+`8` ⇒ `RGB888_1X24`. Le VOP2 convertit (`r2y[1] csc mode[1]` = BT.709 limité) : Chromium dessine toujours en RGB
+  8 bits. ⚠️ 4:2:2 et 4:4:4 en 10 bits donnent le même `bus_format` : la box ne les distingue pas — le convertisseur
+  SDI tranche.
+- ✅ **Le flux TurboHQ n'est pas touché** : rose de la charte `#fc2e9a` (252,46,154) relu dans le flux = (255,68,172) en
+  RGB 8 et (251,44,171) en YUV 10. ⚠️ Mais le flux a un écart **préexistant** sur le bleu (+18), dans les deux cas :
+  probablement une matrice 601/709 entre pxl-wb-enc et le décodeur — non instruit.
+- /admin affiche le `bus_format` réellement émis et prévient quand il ne correspond pas à la demande.
