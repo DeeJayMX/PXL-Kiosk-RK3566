@@ -615,6 +615,7 @@ function rendre() {
   $('#etat').innerHTML = case_('Internet', r.internet ? 'joignable' : 'injoignable', r.internet ? 'ok' : 'ko') + ifs
     + case_('Passerelle', esc(r.routes.map(x => `${x.via} (${x.dev})`).join(' · ') || 'aucune'))
     + case_('DNS', esc(r.dns.join(' · ') || '—')) + case_('PXLnet', esc(r.pxlnet || 'déconnecté'), r.pxlnet ? 'ok' : 'ko')
+    + ((r.https || []).length ? case_('PXLnet — HTTPS', r.https.map(h => `<a href="${esc(h.url)}/" target="_blank" rel="noopener">${esc(h.url.replace(/^https:\/\//, ''))}</a> <small style="display:inline;color:var(--doux)">${esc(h.vers)}</small>`).join('<br>'), 'ok') : '')
     + case_('En marche depuis', duree(m.depuis_s));
   // Matériel : couleur par rapport aux seuils du noyau (le 1er = début du bridage), sinon 70 °C
   const mt = E.materiel, nb = (x, d = 0) => x.toLocaleString('fr-FR', { minimumFractionDigits: d, maximumFractionDigits: d });
@@ -852,15 +853,19 @@ function rendreMaj() {
     const v = m.verifie, court = x => x ? x.slice(0, 7) : '—';
     const dispo = !v ? '<span class="note">pas encore vérifié</span>'
       : v.a_jour ? `<span class="ok">à jour</span> <small class="note">(vérifié ${esc(new Date(v.le).toLocaleString('fr-FR'))})</small>`
+      : c === 'turbohq' ? `<b class="moyen">${esc(v.version || court(v.commit))} disponible</b>${v.touche != null ? ` · ${v.touche} fichier(s) du relais / client` : ''}`
+        + (v.dependances ? ` · <span class="ko">${esc(v.dependances)}</span>`
+           : ` · ${v.relanceRelais ? '<span class="ko">relais relancé : viewers coupés ~3 s</span>' : '<span class="ok">pages des viewers seulement : sans coupure</span>'}`
+             + (v.relanceFlux ? ' · <span class="moyen">flux de la sortie HDMI relancé (~3 s)</span>' : ''))
       : `<b class="moyen">v${esc(v.version || '?')} disponible</b> · ${esc(court(v.commit))}${v.fichiers != null ? ` · ${v.fichiers} fichier(s)` : ''}`
         + (c === 'app' ? ` · ${v.relance ? '<span class="ko">relance du serveur : ce qui est à l\'antenne repasse en PVW</span>' : '<span class="ok">pages seulement : pas de relance</span>'}`
            : ' · <span class="ko">réinstalle la box : preview et admin relancés — hors direct</span>');
-    return `<div class="maj"><h3>${esc(m.nom)} — v${esc(m.installee || '?')} <small class="note">${m.commit ? esc(court(m.commit)) : 'commit non noté'} · ${esc(m.depot)}</small></h3>
+    return `<div class="maj"><h3>${esc(m.nom)} — ${c === 'turbohq' ? esc(m.installee || '?') : 'v' + esc(m.installee || '?')} <small class="note">${m.commit ? esc(court(m.commit)) : 'commit non noté'} · ${esc(m.depot)}</small></h3>
       <div>${dispo}</div>
       ${v && !v.a_jour && v.journal.length ? `<ul>${v.journal.map(l => `<li>${esc(l)}</li>`).join('')}</ul>` : ''}
       <div class="actions">
         <button type="button" data-maj="verifier" data-cible="${c}">Vérifier</button>
-        <button type="button" class="principal" data-maj="appliquer" data-cible="${c}" ${v && !v.a_jour ? '' : 'disabled'}>Appliquer</button>
+        <button type="button" class="principal" data-maj="appliquer" data-cible="${c}" ${v && !v.a_jour && !v.dependances ? '' : 'disabled'}>Appliquer</button>
         <button type="button" data-maj="revenir" data-cible="${c}" ${m.precedent ? '' : 'disabled'} title="${m.precedent ? 'revenir à ' + esc(court(m.precedent)) : 'aucune version précédente'}">Revenir à la précédente</button>
       </div>
       <details><summary class="note">Clé de la box pour GitHub (à faire une fois)</summary>
@@ -872,12 +877,14 @@ function rendreMaj() {
 $('#maj').addEventListener('click', ev => {
   const b = ev.target.closest('button[data-maj]'); if (!b) return;
   const c = b.dataset.cible, quoi = b.dataset.maj, v = MAJ[c].verifie;
-  if (quoi === 'appliquer' && !confirm(c === 'app'
+  if (quoi === 'appliquer' && !confirm(c === 'turbohq'
+    ? 'Appliquer la mise à jour de TurboHQ ?' + (v && v.relanceRelais ? ' Le relais redémarre : les viewers sont coupés ~3 s et se reconnectent seuls.' : ' Pages des viewers seulement : rien ne coupe, recharger un viewer pour la prendre.') + (v && v.relanceFlux ? ' Le flux de la sortie HDMI redémarre aussi (~3 s).' : '')
+    : c === 'app'
     ? (v && v.relance ? 'Appliquer la mise à jour de l\'habillage ? Le serveur sera relancé : ce qui est à l\'antenne repasse en PVW.' : 'Appliquer ? Pages seulement : les pages ouvertes (vMix compris) vont se recharger.')
     : 'Réinstaller la box avec la nouvelle recette ? Preview et administration redémarrent (quelques minutes) : à faire HORS DIRECT.')) return;
-  if (quoi === 'revenir' && !confirm('Revenir à la version précédente ?' + (c === 'app' ? ' Le serveur sera relancé.' : ' La box sera réinstallée (hors direct).'))) return;
+  if (quoi === 'revenir' && !confirm('Revenir à la version précédente ?' + (c === 'app' ? ' Le serveur sera relancé.' : c === 'turbohq' ? ' Le relais et le flux redémarrent (~3 s).' : ' La box sera réinstallée (hors direct).'))) return;
   action(b, async () => { await appel('/api/maj/' + quoi, { cible: c }); await chargerMaj(); },
-    quoi === 'verifier' ? 'vérifié' : c === 'box' ? 'réinstallation lancée — journal : « Mise à jour de la box »' : 'mise à jour appliquée');
+    quoi === 'verifier' ? 'vérifié' : c === 'turbohq' ? 'TurboHQ à jour' : c === 'box' ? 'réinstallation lancée — journal : « Mise à jour de la box »' : 'mise à jour appliquée');
 });
 $('#b-journal').addEventListener('click', ev => action(ev.target, async () => {
   const r = await appel('/api/journal?u=' + encodeURIComponent($('#j-unite').value));

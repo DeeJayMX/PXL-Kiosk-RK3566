@@ -263,6 +263,20 @@ Nice=5
 [Install]
 WantedBy=multi-user.target
 EOF
+# HTTPS sur l'adresse PXLnet (443 → relais TurboHQ, seul) : posé à chaque démarrage, idempotent ;
+# rien si PXLnet n'est pas connecté (premier démarrage d'une image : il passe après pxl-premier-demarrage).
+cat > /etc/systemd/system/pxl-https.service <<EOF
+[Unit]
+Description=PXL — HTTPS sur l'adresse PXLnet (certificat du réseau, joignable depuis PXLnet seulement)
+After=tailscaled.service pxl-premier-demarrage.service network-online.target
+Wants=network-online.target
+[Service]
+Type=oneshot
+ExecStart=$LIB/pxl-https.sh
+RemainAfterExit=yes
+[Install]
+WantedBy=multi-user.target
+EOF
 # Point d'accès de secours + partage de connexion USB (pxl-reseau-secours.sh ; réglé dans /admin : AP_MODE, AP_NOM,
 # AP_BANDE, mot de passe dans /etc/pxl-kiosk/ap.mdp). La veille ramène sur un Wi-Fi connu dès qu'il réapparaît.
 cat > /etc/systemd/system/pxl-ap-veille.service <<EOF
@@ -413,6 +427,7 @@ gcc -O2 -o "$LIB/pxl-wb-enc" "$ICI/fichiers/pxl-wb-enc.c" -lrockchip_mpp -lrga |
 install -m 755 "$ICI/fichiers/pxl-wb.sh" "$LIB/pxl-wb.sh"
 install -m 755 "$ICI/fichiers/pxl-reseau-secours.sh" "$LIB/pxl-reseau-secours.sh"
 install -m 755 "$ICI/fichiers/pxl-hdmi-garde.sh" "$LIB/pxl-hdmi-garde.sh"
+install -m 755 "$ICI/fichiers/pxl-https.sh" "$LIB/pxl-https.sh"   # HTTPS sur l'adresse PXLnet (serve, jamais funnel)
 # le pays de la radio : sans lui (« 00 »), les canaux permis en point d'accès sont les plus restreints
 echo "options cfg80211 ieee80211_regdom=FR" > /etc/modprobe.d/pxl-wifi-pays.conf
 install -m 755 "$ICI/fichiers/weston-pxl.sh" "$LIB/weston-pxl.sh"
@@ -472,12 +487,13 @@ fi
 dire "application depuis $APP_SOURCE…"; progres 65 "application d'habillage"
 /usr/local/bin/pxl-kiosk maj-app >/dev/null || meurs "copie de l'application impossible"
 if [ $EN_LIGNE = 0 ]; then
-  systemctl enable -q seatd pxl-serveur pxl-preview pxl-sante pxl-admin pxl-hdmi-garde pxl-premier-demarrage pxl-ap-veille.timer
+  systemctl enable -q seatd pxl-serveur pxl-preview pxl-sante pxl-admin pxl-hdmi-garde pxl-https pxl-premier-demarrage pxl-ap-veille.timer
   dire "✅ image préparée — tout démarrera au premier démarrage de la box"; exit 0
 fi
 systemctl enable -q pxl-premier-demarrage
 udevadm trigger --subsystem-match=misc --action=change 2>/dev/null || true   # pose /dev/video-dec0 tout de suite
-systemctl enable -q seatd pxl-serveur pxl-preview pxl-sante pxl-admin pxl-hdmi-garde
+systemctl enable -q seatd pxl-serveur pxl-preview pxl-sante pxl-admin pxl-hdmi-garde pxl-https
+systemctl restart pxl-https || true
 # Weston patché (flux writeback sans copie) : reconstruit seulement si la version de Weston ou le patch ont changé.
 # Un échec n'arrête rien : l'écran garde le Weston d'Ubuntu, seul le flux TurboHQ est indisponible.
 progres 68 "Weston (flux sans copie)"

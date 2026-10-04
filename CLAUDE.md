@@ -220,3 +220,23 @@ Voir `README.md` pour la recette et `docs/README.md` pour l'index du dossier.
   `/api/etat`), textes d'aide. `sante.mjs` rend la clé `pxlnet`. Vérifié dans Chromium avec un état réel : 0 erreur JS,
   « tailscale » absent du texte de la page. Les viewers TurboHQ ne sont PAS concernés (décision d'Eliott : « dans le viewer
   on s'en fout »).
+- ⭐ **HTTPS sur l'adresse PXLnet — 443 → relais TurboHQ, SEUL** (04/10, v1.24.0, Eliott : *« https 443 met directement
+  TurboHQ, le reste n'a pas besoin d'https »*). Raison : le viewer n'a son chemin basse latence (WebCodecs) qu'en contexte
+  sécurisé ; en http il bascule en MSE. `pxl-https.sh` + `pxl-https.service` (oneshot au démarrage, idempotent) :
+  `tailscale serve --bg --https=443 http://127.0.0.1:8080` — **serve, jamais funnel** ; rien si PXLnet n'est pas connecté
+  ou si le réseau n'a pas les certificats HTTPS (CertDomains vide). `serve reset` avant de poser : la première version
+  (443 habillage · 8443 TurboHQ · 10000 admin, posée puis retirée le même soir) ne survit pas. Certificat Let's Encrypt
+  renouvelé par tailscaled (1er accès : ~24 s, le temps de l'émettre). ⚠ Le NOM de la box est publié dans les journaux
+  publics de certificats ; l'accès reste réservé à PXLnet. /admin › État affiche l'adresse (lue dans `serve status`).
+  ✅ **Mesuré** (Chromium de la box, `https://pxlnode-….ts.net/turbohq_viewer_ios.html`) : chemin basse latence choisi,
+  `wss://…/api/turbohq/SyntPVW`, image décodée — en http le même viewer passe en MSE.
+- ⭐ **Brique TurboHQ mise à jour depuis GitHub, comme un bloc** (04/10, v1.24.0, Eliott) — troisième cible de `maj.mjs`
+  (`turbohq`) : dépôt `DeeJayMX/PXL-TurboHQ`, branche `master` (`MAJ_BRANCHE_THQ`), clone **partiel**
+  (`--filter=blob:none` : le dépôt porte bancs et notes, seuls `pxl-turbohq-relay/` et `pxl-turbohq-client/` sont extraits
+  par `git archive`). Posés dans `/usr/local/lib/turbohq-relay` et `/usr/local/lib/pxl-kiosk/turbohq-client`, **sans
+  `--delete`** (la copie de la box porte `node_modules`, `.mbx2/`, `sauvegardes/`), avec `VERSION-PXL` réécrit. Relance
+  ciblée : le relais relit ses pages à chaque requête, donc seuls ses `.mjs`/`package*.json` le relancent (viewers coupés
+  ~3 s) ; `bin/`/`src/` du client relancent `pxl-wb`. 🔴 **Dépendances du relais changées ⇒ REFUS** (pas de registre npm le
+  jour J). Pas de popup sur l'écran de la box. Le premier « Vérifier » part du commit lu dans `VERSION-PXL`.
+  ⚠ Il faut la clé de déploiement de la box sur `DeeJayMX/PXL-TurboHQ` (affichée dans /admin › Mises à jour) — sans
+  elle : « GitHub refuse la clé de la box », vu le 04/10 sur la box.

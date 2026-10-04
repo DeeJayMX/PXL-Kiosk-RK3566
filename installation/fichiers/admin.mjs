@@ -154,7 +154,18 @@ async function reseau() {
   let internet = false;
   try { internet = (await fetch('http://connectivity-check.ubuntu.com/', { signal: AbortSignal.timeout(3000) })).status === 204; } catch {}
   const ts = await run('tailscale', ['ip', '-4'], { timeout: 4000 });
-  return { adresses, routes, dns, internet, pxlnet: ts.ok ? ts.out.trim() : null };
+  return { adresses, routes, dns, internet, pxlnet: ts.ok ? ts.out.trim() : null, https: await httpsPxlnet() };
+}
+// Adresses HTTPS de la box sur PXLnet (pxl-https.sh, 04/10) : lues dans la configuration « serve » de tailscaled, la seule
+// vérité — un réglage écrit ailleurs pourrait ne pas être posé. [{ url, vers }] ; [] si rien n'est publié.
+const SERVIS = { 8765: 'habillage', 8080: 'TurboHQ', 8791: 'administration' };
+async function httpsPxlnet() {
+  const r = await run('tailscale', ['serve', 'status', '--json'], { timeout: 4000 });
+  let j; try { j = JSON.parse(r.out); } catch { return []; }
+  return Object.entries(j.Web || {}).map(([hote, w]) => {
+    const proxy = w?.Handlers?.['/']?.Proxy || '', port = (proxy.match(/:(\d+)\/?$/) || [])[1];
+    return { url: 'https://' + hote.replace(/:443$/, ''), vers: SERVIS[port] || proxy };
+  }).sort((a, b) => a.url.length - b.url.length);
 }
 // ---------------------------------------------------------------- versions : chaque morceau dit ce qu'il est
 // recette (ce dépôt, installation/VERSION, recopiée par installer.sh dans /etc/pxl-kiosk/version), application
