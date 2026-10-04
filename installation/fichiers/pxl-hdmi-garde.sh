@@ -12,8 +12,8 @@
 #     l'image revient dès que la TV accroche ; mode AUTO ⇒ relance seulement si l'EDID a changé (un AUTRE écran, dont
 #     preview.sh doit relire les modes). Réveil par `udevadm monitor` (événements drm) ; la transition se lit sur
 #     `status`, l'écran sur l'empreinte de `edid`, qu'on relit après ATTENTE s (un câble qu'on enfonce rebondit).
-# (2) FILET — prédicat = l'état du SCANOUT (debugfs), jamais le journal de Weston : aucun « Video Port: ACTIVE »
-#     pendant 3 lectures de suite (6 s ; une relance normale l'éteint quelques secondes), au plus une fois / 30 s
+# (2) FILET — prédicat = l'état du SCANOUT (debugfs), jamais le journal de Weston : aucun « Video Port: ACTIVE », OU
+#     aucun plan « winN: ACTIVE » (signal sans image — écran noir mais allumé, vu le 04/10), pendant 3 lectures de suite (6 s ; une relance normale l'éteint quelques secondes), au plus une fois / 30 s
 #     (un écran qui refuserait tout ne doit pas faire tourner la box en boucle).
 . "${PXL_GARDE_CONF:-/etc/pxl-kiosk.conf}" 2>/dev/null
 NOM=${SORTIE_NOM:-HDMI-A-1}
@@ -74,13 +74,16 @@ while :; do
     fi
   fi
   # (2) filet : écran branché, preview censée tourner (pas arrêtée exprès), et aucun Video Port actif
+  # 04/10 au soir, après le passage sur l'eMMC : écran NOIR en 1080i50 avec le Video Port ACTIF — pxl-mode avait posé le
+  # mode (tampon noir), puis le premier commit de Weston a été refusé (« repaint-flush failed ») et aucun plan n'affichait
+  # plus rien. « Video Port actif » ne suffit donc pas : il faut aussi un plan (winN) ACTIF, c'est-à-dire une image.
   if [ -r "$RESUME" ] && [ "$etat" = connected ] && systemctl -q is-active pxl-preview \
-     && ! grep -q 'Video Port[0-9]*: ACTIVE' "$RESUME"; then
+     && { ! grep -q 'Video Port[0-9]*: ACTIVE' "$RESUME" || ! grep -qE 'win[0-9]+: ACTIVE' "$RESUME"; }; then
     n=$((n + 1))
   else
     n=0
   fi
   if [ $n -ge $TENUE ] && [ $((maintenant - derniere)) -ge $ECART ]; then
-    relancer "$NOM branché mais aucun Video Port actif depuis $n lectures"
+    relancer "$NOM branché mais rien d'affiché (Video Port ou plan éteint) depuis $n lectures"
   fi
 done
