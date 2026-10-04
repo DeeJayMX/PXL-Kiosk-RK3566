@@ -13,8 +13,15 @@
 #   1. garde-fous : on tourne bien depuis la SD (mmcblk0), l'eMMC est mmcblk2 (type MMC), la sauvegarde de l'Android est
 #      là et vérifiée (/root/sauvegarde-emmc/VERIFIE.txt), rien n'est à l'antenne ;
 #   2. table GPT neuve sur l'eMMC, MÊME disposition que la SD (BOOT 512 Mo à 16 Mio, ROOTFS = le reste) ;
-#   3. chargeur : idbloader.img (secteur 64) et u-boot.itb (secteur 16384) de /usr/lib/u-boot — ceux de la SD, vérifiés
-#      identiques à l'octet avant d'écrire ;
+#   3. chargeur : on GARDE le premier étage de l'eMMC (idbloader Android, secteurs 64-16383 : DDR + SPL, celui qui démarre
+#      la box AUJOURD'HUI) et on n'écrit que le second étage, u-boot.itb au secteur 16384 — celui de la SD, vérifié
+#      identique à l'octet, qui tourne aujourd'hui aussi. Relevé le 04/10 dans les binaires : la BootROM charge le premier
+#      étage de l'eMMC, et son SPL cherche le second étage SUR LA SD D'ABORD (u-boot,spl-boot-order = dwmmc@fe2b0000 (SD),
+#      sdhci@fe310000 (eMMC)…) — c'est ainsi que la SD démarre. Après l'installation, rien de neuf dans la chaîne :
+#      même premier étage, même U-Boot, lu sur l'eMMC quand la SD est absente. Et le FILET reste : SD insérée, ce même
+#      premier étage charge la SD — la carte de secours démarre sans câble ni mode maskrom.
+#      (Le premier étage armbian de la SD est construit pour une Radxa ROCK3 C et n'a, lui, jamais démarré cette box.)
+#      Empreinte des secteurs 64-16383 de l'eMMC prise avant et contrôlée après : s'ils bougent, on s'arrête.
 #   4. ext4 neufs, UUID NEUFS (deux supports au même UUID se confondraient au montage), étiquettes BOOT / ROOTFS ;
 #   5. copie du système (rsync, deux passes : à chaud, puis serveur d'habillage arrêté quelques secondes pour figer
 #      etat-local) — sans /root/sauvegarde-emmc (2 Go, elle reste sur la SD) ;
@@ -48,7 +55,10 @@ cmp -s <(dd if=$SD bs=512 skip=64 count=$(( $(stat -c %s $UB/idbloader.img) / 51
   || meurs "le chargeur de la SD n'est pas $UB/idbloader.img — on n'écrirait pas celui qui démarre aujourd'hui"
 cmp -s <(dd if=$SD bs=512 skip=16384 count=$(( ($(stat -c %s $UB/u-boot.itb) + 511) / 512 )) status=none | head -c $(stat -c %s $UB/u-boot.itb)) $UB/u-boot.itb \
   || meurs "u-boot de la SD différent de $UB/u-boot.itb"
-ok "chargeur à écrire = celui de la SD, à l'octet"
+ok "second étage à écrire = celui de la SD, à l'octet"
+grep -q RKNS <(dd if=$EMMC bs=512 skip=64 count=1 status=none) || meurs "pas de premier étage Rockchip sur l'eMMC (secteur 64)"
+dd if=$EMMC bs=512 skip=64 count=8128 status=none | strings -n 8 | grep -c "U-Boot SPL" >/dev/null || meurs "premier étage de l'eMMC illisible"
+ok "premier étage de l'eMMC présent (il est conservé tel quel)"
 antenne=$(curl -s -m 3 http://127.0.0.1:8765/api/tally | grep -o '"[a-z0-9]*":"antenne"' | grep -v sponsors || true)
 [ -z "$antenne" ] || meurs "quelque chose est à l'antenne : $antenne"
 ok "rien à l'antenne"
@@ -57,19 +67,26 @@ for o in sfdisk wipefs mkfs.ext4 rsync blkid partprobe; do command -v $o >/dev/n
 if [ "$MODE" != --appliquer ]; then
   echo
   echo "Essai seulement : rien n'a été écrit. Avec --appliquer, l'eMMC (l'Android d'origine, sauvegardé) sera effacée et"
-  echo "recevra : table GPT (BOOT 512 Mo + ROOTFS ~$(( taille - 1 )) Go), chargeur de la SD, copie du système."
+  echo "recevra : table GPT (BOOT 512 Mo + ROOTFS ~$(( taille - 1 )) Go), le U-Boot de la SD (le premier étage de
+l'eMMC est gardé), copie du système."
   exit 0
 fi
 
 dire "== effacement de l'eMMC et nouvelle table"
 for p in $(lsblk -nro NAME $EMMC | tail -n +2); do umount /dev/$p 2>/dev/null || true; done
-wipefs -a -q $EMMC
-dd if=/dev/zero of=$EMMC bs=1M count=16 conv=fsync status=none
-printf 'label: gpt\nunit: sectors\n\nstart=32768, size=1046528, type=0FC63DAF-8483-4772-8E79-3D69D8477DE4, name="primary"\nstart=1081344, type=0FC63DAF-8483-4772-8E79-3D69D8477DE4, name="primary"\n' | sfdisk -q $EMMC
+PREMIER=$(dd if=$EMMC bs=512 skip=64 count=16320 status=none | sha256sum | cut -c1-64)
+grep -q RKNS <(dd if=$EMMC bs=512 skip=64 count=1 status=none) || meurs "pas de premier étage Rockchip au secteur 64 de l'eMMC"
+# la table seule : sfdisk réécrit le MBR protecteur et les deux GPT (début et fin), rien d'autre
+dd if=/dev/zero of=$EMMC bs=512 seek=16384 count=16384 conv=notrunc,fsync status=none   # ancien second étage + « trust »
+printf 'label: gpt\nunit: sectors\n\nstart=32768, size=1046528, type=0FC63DAF-8483-4772-8E79-3D69D8477DE4, name="primary"\nstart=1081344, type=0FC63DAF-8483-4772-8E79-3D69D8477DE4, name="primary"\n' | sfdisk -q --wipe never $EMMC   # --wipe never : rien d autre que la table (le premier étage est au secteur 64)
 partprobe $EMMC; sleep 2
-dire "== chargeur"
-dd if=$UB/idbloader.img of=$EMMC seek=64 conv=notrunc,fsync status=none
+dire "== chargeur : second étage seulement (u-boot.itb au secteur 16384), premier étage de l'eMMC conservé"
 dd if=$UB/u-boot.itb of=$EMMC seek=16384 conv=notrunc,fsync status=none
+APRES=$(dd if=$EMMC bs=512 skip=64 count=16320 status=none | sha256sum | cut -c1-64)
+[ "$PREMIER" = "$APRES" ] || meurs "le premier étage de l'eMMC a bougé — NE PAS redémarrer, restaurer depuis $SAUV"
+cmp -s <(dd if=$EMMC bs=512 skip=16384 count=$(( ($(stat -c %s $UB/u-boot.itb) + 511) / 512 )) status=none | head -c $(stat -c %s $UB/u-boot.itb)) $UB/u-boot.itb \
+  || meurs "u-boot.itb mal écrit sur l'eMMC"
+ok "premier étage intact, second étage écrit et relu"
 dire "== systèmes de fichiers"
 mkfs.ext4 -q -F -L BOOT ${EMMC}p1
 mkfs.ext4 -q -F -L ROOTFS ${EMMC}p2

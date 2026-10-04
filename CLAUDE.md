@@ -110,4 +110,14 @@ Voir `README.md` pour la recette et `docs/README.md` pour l'index du dossier.
   chargeur Android, et on ne sait pas lequel des deux a tourné — pas de console série). S'il échoue, la box n'amorce plus
   rien seule : retour par le mode **maskrom** (câble USB A-A, bouton reset) et RKDevTool / `rkdeveloptool`, image de la
   sauvegarde. Vérifier le câble AVANT `--appliquer`.
+- ⭐ **Chaîne de démarrage LUE dans les binaires (04/10, même soir)** — elle corrige le point « non prouvé » ci-dessus :
+  le premier étage de l'eMMC (idbloader Android : SPL `2017.09-g606f72bd97a`, 30/05/2024) a
+  `u-boot,spl-boot-order = dwmmc@fe2b0000 (SD), sdhci@fe310000 (eMMC), …` : la BootROM le charge depuis l'eMMC et il va
+  chercher le second étage **sur la SD d'abord** (FIT au secteur 16384, sans partition « uboot » — la SD n'en a pas, donc
+  le repli brut est déjà prouvé). Le premier étage armbian de la SD est celui d'une **Radxa ROCK3 C** (DDR V1.10) et n'a
+  probablement jamais démarré cette box. ⇒ `emmc-installer.sh` **garde le premier étage de l'eMMC** (secteurs 64-16383,
+  empreinte contrôlée avant / après) et n'écrit que `u-boot.itb` au secteur 16384. Chaîne après installation, SD retirée :
+  même premier étage → même U-Boot (lu sur l'eMMC) → `boot.scr` de l'eMMC. **Filet** : SD insérée, ce premier étage charge
+  la SD — la carte de secours démarre sans câble ni maskrom. Piège évité dans le script : `strings | grep -q` sous
+  `pipefail` rend un faux échec (SIGPIPE) — `grep -c >/dev/null`.
 
