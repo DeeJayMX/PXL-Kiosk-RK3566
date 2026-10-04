@@ -80,6 +80,29 @@ export async function etat() {
   return r;
 }
 
+// ---- module Companion de l'habillage (04/10/2026, Eliott : « la box embarque le module directement accessible ») : construit
+// par GitHub Actions et rangé sur la branche « companion-module » du dépôt de l'habillage (un .tgz + info.json). Le fetch
+// habituel la ramène avec la même clé de déploiement ; on la dépose dans etat-local/companion-module/ — hors de ce que la
+// mise à jour réécrit — et le serveur d'habillage la sert sur sa page d'accueil (/companion-module.tgz). Jamais bloquant :
+// une branche absente (pas encore construite) ou une erreur n'empêchent pas la mise à jour de l'habillage.
+const MODULE_DIR = join(APP_DIR, 'etat-local', 'companion-module');
+async function moduleCompanion() {
+  const ref = 'origin/companion-module';
+  // explicite : un clone dont le refspec ne suivrait que main ne verrait jamais la branche (vu sur un clone de travail)
+  await git('app', ['fetch', '-q', 'origin', '+refs/heads/companion-module:refs/remotes/origin/companion-module']);
+  const i = await git('app', ['show', `${ref}:info.json`]);
+  if (!i.ok) return null;
+  let info; try { info = JSON.parse(i.out); } catch { return null; }
+  let deja = {}; try { deja = JSON.parse(readFileSync(join(MODULE_DIR, 'info.json'), 'utf8')); } catch {}
+  if (deja.source === info.source && deja.construit === info.construit && info.fichier && existsSync(join(MODULE_DIR, info.fichier))) return info;
+  const t = MODULE_DIR + '.nouveau';
+  const r = await run('bash', ['-c', `set -o pipefail; rm -rf '${t}' && mkdir -p '${t}' '${MODULE_DIR}' && git -C '${clone('app')}' archive '${ref}' | tar -x -C '${t}'`
+    + ` && rm -f '${MODULE_DIR}'/*.tgz && mv '${t}'/* '${MODULE_DIR}'/ && rmdir '${t}' && chown -R pxl:pxl '${MODULE_DIR}'`]);
+  if (!r.ok) return { erreur: r.err.slice(0, 200) };
+  await run('sync', []);
+  return info;
+}
+
 // ---- vérifier : ce qui est disponible sur GitHub, et ce que l'application coûterait au direct
 export async function verifier(c) {
   exiger(CIBLES[c], 'cible inconnue');
@@ -94,6 +117,7 @@ export async function verifier(c) {
   const relance = c === 'app' ? (fichiers == null || fichiers.some(f => !f.startsWith('pages/') && !/\.md$/.test(f) && !f.startsWith('docs/') && f !== 'VERSION')) : true;
   const v = { commit: tete, version: await versionDe(c, cible), a_jour: depuis === tete, journal: journal ? journal.split('\n').slice(0, 30) : [],
     fichiers: fichiers ? fichiers.length : null, relance, le: new Date().toISOString() };
+  if (c === 'app') { try { const m = await moduleCompanion(); v.module = m && (m.version || m.erreur) || null; } catch (e) { v.module = 'erreur : ' + e.message; } }
   noter({ ...note(), [c]: { ...(note()[c] || {}), verifie: v } });
   return v;
 }
@@ -132,6 +156,7 @@ export async function appliquer(c, { commit = null, relancer = null } = {}) {
   const avant = n[c]?.commit || null;
   progres(c, 5, c === 'app' ? 'récupération' : 'préparation');
   try { await poser(c, vise); } catch (e) { progres(c, 100, 'échec : ' + e.message.slice(0, 80), false); throw e; }
+  if (c === 'app') try { await moduleCompanion(); } catch {}   // le module Companion embarqué (jamais bloquant)
   progres(c, c === 'app' ? 60 : 3, c === 'app' ? 'enregistrement' : 'préparation');
   await graver();
   noter({ ...note(), [c]: { ...(note()[c] || {}), commit: vise, precedent: avant && avant !== vise ? avant : n[c]?.precedent || null, le: new Date().toISOString() } });

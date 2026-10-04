@@ -193,3 +193,8 @@ Voir `README.md` pour la recette et `docs/README.md` pour l'index du dossier.
   preview précédente tenait sans doute encore la carte (déduit, non prouvé). `preview.sh` fait 3 essais à 1 s d'intervalle
   ; code 2 (mode introuvable ou refusé par le pilote) ⇒ pas d'insistance. Boucle vérifiée sur un faux pxl-mode (codes
   1-1-0 → posé au 3ᵉ ; 1-1-1 → repli ; 2 → repli immédiat ; 0 → posé).
+- ⭐ **Module Companion embarqué** (04/10, v1.21.0, Eliott — option B) : le `.tgz` est construit par GitHub Actions dans le
+  dépôt de l'habillage (branche `companion-module` : le `.tgz` + `info.json`). `maj.mjs` le récupère à chaque `verifier` /
+  `appliquer app` (même clé de déploiement, fetch explicite de la branche) dans `<APP_DIR>/etat-local/companion-module/`,
+  hors de ce que la mise à jour réécrit ; le serveur d'habillage le sert sur sa page d'accueil (`/companion-module.tgz`).
+  Jamais bloquant. Aucun outil de construction sur la box (option A, construire sur la box, écartée).
