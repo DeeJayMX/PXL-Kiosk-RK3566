@@ -120,4 +120,11 @@ Voir `README.md` pour la recette et `docs/README.md` pour l'index du dossier.
   même premier étage → même U-Boot (lu sur l'eMMC) → `boot.scr` de l'eMMC. **Filet** : SD insérée, ce premier étage charge
   la SD — la carte de secours démarre sans câble ni maskrom. Piège évité dans le script : `strings | grep -q` sous
   `pipefail` rend un faux échec (SIGPIPE) — `grep -c >/dev/null`.
+- ✅✅ **FAIT le 04/10 à 20 h 47 — la box tourne sur l'eMMC.** `emmc-installer.sh --appliquer` : 7 min (copie à chaud 5 min,
+  passe finale serveur arrêté 17 s), premier étage relu identique à l'Android d'origine. Éteinte, SD retirée, rallumée :
+  `/` = `mmcblk2p2` (UUID 510da7c7…), `/boot` = `mmcblk2p1`, tous les services actifs, sortie 1080i50, palmarès et
+  préparations retrouvés, polices chargées ; 22 Go libres. Retour sur le réseau ~1 min 30 après l'allumage.
+  La SD (inchangée) est la carte de SECOURS : insérée, elle démarre en priorité. Sauvegarde de l'Android : sur la SD
+  (`/root/sauvegarde-emmc`) et sur le SSD Samsung T7 « ATEM Rec » d'Eliott (`PXLnode-sauvegarde-eMMC-Android-2026-10-04`).
+  ⚠️ La SD de secours se périme : avant la course, la remettre à niveau (l'insérer, démarrer dessus, `maj.mjs appliquer`).
 
