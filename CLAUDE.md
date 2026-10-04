@@ -181,3 +181,10 @@ Voir `README.md` pour la recette et `docs/README.md` pour l'index du dossier.
   échoue. ✅ Mesuré sur un moniteur qui ne déclare que du 60 Hz : `1920x1080@25` ⇒ `Display mode: 1920x1080p25`
   (2640/1125, 74,25 MHz), `1920x1080i@50` ⇒ `1920x1080i50`, image de Weston active, 0 commit refusé, flux à 23-25 img/s.
   🎯 Que l'écran AFFICHE un mode non déclaré n'est pas prouvé par la box — c'est l'œil qui tranche.
+- ⭐ **Cadence du flux TurboHQ : AUTO + 24/25/30/50/60** (04/10, v1.20.0, demande d'Eliott). Mesuré avant : `WB_FPS=25` sur
+  une sortie **1080p60** ⇒ **14,9 img/s** (25 ne divise pas 60 : Weston ne capture qu'au vblank, la grille de 40 ms
+  tombe une fois sur quatre). AUTO = la cadence de la sortie, image pour image (entrelacé : celle des images, 1080i50 →
+  25). `preview.sh` écrit le mode posé dans `/run/pxl-preview/mode-sortie` (pxl-wb tourne en `pxl` et ne lit pas le
+  summary, debugfs root — mesuré) ; `pxl-wb` est `PartOf=pxl-preview` pour se relancer avec elle. Le GOP se range
+  désormais en SECONDES (`WB_GOP_S`). ✅ Mesuré en AUTO sur 1080p60 : **56,7-58,9 img/s**, 16,8 ms/img, 0 barrière en
+  retard, Chromium ~50 % d'un cœur ×2. 🎯 AUTO en 1080i50 (→ 25) non remesuré sur la box : logique seule.

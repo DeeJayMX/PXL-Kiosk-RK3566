@@ -41,6 +41,8 @@ else
   echo "⚠ $MODE refusé par pxl-mode — repli sur $repli"
   MODE=$repli; WMODE=$repli
 fi
+# Le mode posé, pour la cadence AUTO du flux (pxl-wb.sh) : pxl-wb tourne en « pxl » et ne lit pas le summary (debugfs, root).
+echo "$MODE" > "$XDG_RUNTIME_DIR/mode-sortie"
 # ⚠️ (04/10) le « sleep 1 » laisse le changement de mode se poser avant que Weston prenne la main : voir plus bas.
 
 # Entrelacé en PsF (ENTRELACE=psf, défaut — décision d'Eliott, 03/10 ; réglé dans /admin) : Weston patché se cadence à

@@ -274,7 +274,9 @@ async function regleEcran(q) {
 // ---------------------------------------------------------------- flux TurboHQ de la sortie HDMI (service pxl-wb)
 // Weston patché écrit l'image du HDMI (writeback du VOP2) dans des tampons que l'encodeur MPP lit SANS COPIE, puis
 // thq-publish l'envoie à un relais TurboHQ. Réglages dans /etc/pxl-kiosk.conf (WB_*), comme la sortie HDMI.
-const WB_FPS = [25, 30, 50];
+// « auto » (04/10) : la cadence de la sortie HDMI, résolue par pxl-wb.sh — une cadence fixe qui ne divise pas celle de la
+// sortie saccade (25 demandées sur une sortie 60 Hz : 14,9 img/s mesurées).
+const WB_FPS = ['auto', 24, 25, 30, 50, 60];
 const WB_CODECS = ['h264', 'hevc'], WB_RCS = ['cbr', 'vbr'], WB_GOP_S = [0.5, 1, 2, 4];   // GOP réglé en secondes, rangé en images
 // Clé d'accès d'un relais qui en exige une : À PART de pxl-kiosk.conf (que tout le système lit), 0640 root:pxl — pxl-wb
 // tourne en pxl. Jamais renvoyée à la page : elle n'y apparaît que comme « définie ».
@@ -289,9 +291,9 @@ async function wb() {
   const patche = !!lire('/etc/pxl-kiosk/weston-pxl');
   const client = existsSync('/usr/local/lib/pxl-kiosk/turbohq-client/bin/thq-publish.js');
   return { actif: c.WB_ACTIF === '1', url: c.WB_URL || 'ws://127.0.0.1:8080', canal: c.WB_CANAL || 'pxlnode',
-    fps: +(c.WB_FPS || 25), debit: +(c.WB_DEBIT || 6000), service: act,
+    fps: c.WB_FPS === 'auto' ? 'auto' : +(c.WB_FPS || 25), debit: +(c.WB_DEBIT || 6000), service: act,
     codec: WB_CODECS.includes(c.WB_CODEC) ? c.WB_CODEC : 'h264', rc: WB_RCS.includes(c.WB_RC) ? c.WB_RC : 'cbr',
-    gop: +(c.WB_GOP || c.WB_FPS || 25), codecs: WB_CODECS, rcs: WB_RCS, gopsS: WB_GOP_S, stats, derniere: lignes.slice(-1)[0] || null,
+    gopS: +(c.WB_GOP_S || (c.WB_GOP && +c.WB_FPS ? +c.WB_GOP / +c.WB_FPS : 1)), codecs: WB_CODECS, rcs: WB_RCS, gopsS: WB_GOP_S, stats, derniere: lignes.slice(-1)[0] || null,
     patche, client, fpsPossibles: WB_FPS, cle: !!lire(WB_CLE) };
 }
 async function regleWb(q) {
@@ -299,7 +301,7 @@ async function regleWb(q) {
   const url = String(q.url || '').trim(), canal = String(q.canal || '').trim();
   exiger(/^wss?:\/\/[^\s"'`$\\]+$/.test(url), 'adresse du relais invalide (ws://hôte:port)');
   exiger(/^[A-Za-z0-9_.-]{1,40}$/.test(canal), 'nom de canal invalide (lettres, chiffres, - _ .)');
-  const fps = +q.fps, debit = Math.round(+q.debit);
+  const fps = q.fps === 'auto' ? 'auto' : +q.fps, debit = Math.round(+q.debit);
   exiger(WB_FPS.includes(fps), 'cadence invalide'); exiger(debit >= 500 && debit <= 20000, 'débit entre 500 et 20000 kbit/s');
   const codec = q.codec || 'h264', rc = q.rc || 'cbr', gopS = +(q.gopS || 1);
   exiger(WB_CODECS.includes(codec), 'codec inconnu'); exiger(WB_RCS.includes(rc), 'mode de débit inconnu');
@@ -308,7 +310,7 @@ async function regleWb(q) {
   exiger(!actif || existsSync('/usr/local/lib/pxl-kiosk/turbohq-client/bin/thq-publish.js'), 'client TurboHQ absent sur la box (/usr/local/lib/pxl-kiosk/turbohq-client)');
   let t = readFileSync(CONF, 'utf8');
   for (const [k, v] of [['WB_ACTIF', actif ? 1 : 0], ['WB_URL', `"${url}"`], ['WB_CANAL', canal], ['WB_FPS', fps], ['WB_DEBIT', debit],
-    ['WB_CODEC', codec], ['WB_RC', rc], ['WB_GOP', Math.max(1, Math.round(fps * gopS))]])
+    ['WB_CODEC', codec], ['WB_RC', rc], ['WB_GOP_S', gopS]])
     t = poserLigne(t, k, v);
   // Les relais choisis à la main sont retenus (8 au plus) : la recherche les interroge DIRECTEMENT — un Wi-Fi qui ne
   // relaie pas les annonces entre clients (mesuré le 03/10 sur « PXL ») ou le tailnet n'empêchent pas une question directe.
@@ -317,6 +319,7 @@ async function regleWb(q) {
     const connus = [hote, ...relaisConnus().filter(h => h !== hote)].slice(0, 8);
     t = poserLigne(t, 'WB_RELAIS_CONNUS', `"${connus.join(' ')}"`);
   }
+  t = t.replace(/^\s*WB_GOP=.*\n?/m, '');   // remplacé par WB_GOP_S (secondes) : en AUTO la cadence n'est connue que de pxl-wb.sh
   ecrireAtomique(CONF, t);
   if (q.cleEffacer === '1') { try { unlinkSync(WB_CLE); } catch { /* déjà absente */ } }
   else if (q.cle) {

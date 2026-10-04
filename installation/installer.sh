@@ -238,6 +238,8 @@ cat > /etc/systemd/system/pxl-wb.service <<EOF
 [Unit]
 Description=PXL — sortie HDMI de la box publiée en TurboHQ (writeback sans copie)
 After=pxl-preview.service
+# relancé avec la preview : la cadence AUTO suit le mode de sortie (pxl-wb.sh)
+PartOf=pxl-preview.service
 [Service]
 User=pxl
 Group=pxl

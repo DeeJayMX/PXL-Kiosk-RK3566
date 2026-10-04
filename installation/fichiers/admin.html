@@ -497,10 +497,10 @@ function rendre() {
       const local = /^wss?:\/\/(127\.0\.0\.1|localhost)(:|\/|$)/.test(fx.url);
       $$('input[name="wb-dest"]').forEach(r => { r.checked = r.value === (local ? 'local' : 'perso'); });
       $('#wb-actif').checked = fx.actif; $('#wb-url').value = local ? '' : fx.url; $('#wb-canal').value = fx.canal; $('#wb-debit').value = fx.debit;
-      $('#wb-fps').innerHTML = fx.fpsPossibles.map(f => `<option value="${f}" ${f === fx.fps ? 'selected' : ''}>${f} img/s</option>`).join('');
+      $('#wb-fps').innerHTML = fx.fpsPossibles.map(f => `<option value="${f}" ${f === fx.fps ? 'selected' : ''}>${f === 'auto' ? 'AUTO — celle de la sortie HDMI' : f + ' img/s'}</option>`).join('');
       $('#wb-codec').innerHTML = fx.codecs.map(c => `<option value="${c}" ${c === fx.codec ? 'selected' : ''}>${c === 'hevc' ? 'H.265 (HEVC)' : 'H.264'}</option>`).join('');
       $('#wb-rc').innerHTML = fx.rcs.map(c => `<option value="${c}" ${c === fx.rc ? 'selected' : ''}>${c.toUpperCase()}</option>`).join('');
-      const gs = fx.gop / fx.fps;
+      const gs = fx.gopS;
       $('#wb-gop').innerHTML = fx.gopsS.map(g => `<option value="${g}" ${Math.abs(g - gs) < 0.01 ? 'selected' : ''}>${g < 1 ? '½' : g} s</option>`).join('');
       $('#wb-cle').value = ''; $('#wb-cle').placeholder = fx.cle ? 'définie — laisser vide pour la garder' : 'aucune';
       $('#wb-cle-effacer').checked = false;
