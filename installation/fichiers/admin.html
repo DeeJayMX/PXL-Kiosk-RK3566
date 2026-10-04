@@ -173,6 +173,7 @@
         <div><label for="ecran-lien-prof">Profondeur</label><select id="ecran-lien-prof">
           <option value="8">8 bits (défaut)</option><option value="10">10 bits</option></select></div>
       </div>
+      <p class="note" id="ecran-res-emise"></p>
       <p class="note" id="ecran-emis"></p>
       <div class="actions"><button class="principal" type="submit">Appliquer — relance l'écran</button></div>
     </form>
@@ -471,6 +472,14 @@ function rendre() {
     $('#ecran-mode').value = ec.modes.includes(ec.mode) ? ec.mode : '';
     $('#ecran-entrelace').value = ec.entrelace || '50i';
     $('#ecran-lien-format').value = ec.lienFormat || 'rgb'; $('#ecran-lien-prof').value = ec.lienProfondeur || '8';
+  }
+  if (ec) {   // la résolution RÉELLEMENT en sortie (summary du VOP2), cadence calculée — pas le réglage
+    const m = ec.emis;
+    const nom = m ? `${m.h}${m.entrelace ? 'i' : 'p'} · ${m.hz.toFixed(2).replace('.', ',')} Hz${m.l !== (m.h === 720 ? 1280 : 1920) ? ` (${m.l}×${m.h})` : ''}` : null;
+    const ecart = m && ec.mode && ec.mode !== 'auto' && m.cle !== ec.mode;
+    $('#ecran-res-emise').innerHTML = m ? `Résolution émise en ce moment : <b>${esc(nom)}</b>${ec.mode === 'auto' ? ' (choisie par AUTO)' : ''}`
+      + (ecart ? ' — ⚠ pas ce qui est demandé : l’écran branché ne déclare pas ce mode, la box s’est repliée' : '')
+      : 'Résolution émise en ce moment : aucune (écran débranché ou sortie éteinte)';
   }
   if (ec) {   // ce que le pilote émet VRAIMENT : il retombe en RGB / 8 bits, sans rien dire, si l'écran refuse le format
     const BUS = { RGB888_1X24: 'RGB · 8 bits', RGB101010_1X30: 'RGB · 10 bits', YUV8_1X24: 'YUV 4:4:4 ou 4:2:2 · 8 bits',

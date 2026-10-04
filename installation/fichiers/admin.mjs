@@ -233,6 +233,17 @@ function busFormat() {
   const m = /bus_format\[[0-9a-f]+\]: (\S+)/.exec(lire('/sys/kernel/debug/dri/0/summary') || '');
   return m ? m[1] : null;
 }
+// Le mode RÉELLEMENT balayé (demande d'Eliott, 04/10 : « voir quelle résolution est réellement en sortie ») : le summary
+// du VOP2. La cadence se CALCULE (dclk ÷ htotal × vtotal, × 2 en entrelacé) — le nom du mode est arrondi.
+function modeEmis() {
+  const t = lire('/sys/kernel/debug/dri/0/summary') || '';
+  const m = /Display mode: (\d+)x(\d+)([pi])(\d+)/.exec(t);
+  if (!m) return null;
+  const d = /dclk\[(\d+) kHz\][^]*?H: \d+ \d+ \d+ (\d+)[^]*?V: \d+ \d+ \d+ (\d+)/.exec(t.slice(m.index));
+  const hz = d ? +d[1] * 1000 / (+d[2] * +d[3]) * (m[3] === 'i' ? 2 : 1) : +m[4];
+  return { l: +m[1], h: +m[2], entrelace: m[3] === 'i', hz: Math.round(hz * 1000) / 1000,
+    cle: `${m[1]}x${m[2]}${m[3] === 'i' ? 'i' : ''}@${m[4]}` };
+}
 async function ecran() {
   const c = lireConf();
   const l = await run('/usr/local/lib/pxl-kiosk/pxl-mode', ['--liste', c.SORTIE_NOM || 'HDMI-A-1']);
@@ -240,7 +251,7 @@ async function ecran() {
   return { mode: c.SORTIE_MODE || null, modes: MODES_HDMI, dispo: declares ? MODES_HDMI.filter(m => m === 'auto' || declares.has(m)) : null,
     entrelace: ENTRELACES.includes(c.ENTRELACE) ? c.ENTRELACE : 'psf', entrelaces: ENTRELACES,
     lienFormat: LIEN_FORMATS.includes(c.LIEN_FORMAT) ? c.LIEN_FORMAT : 'rgb', lienProfondeur: LIEN_PROFONDEURS.includes(c.LIEN_PROFONDEUR) ? c.LIEN_PROFONDEUR : '8',
-    lienFormats: LIEN_FORMATS, lienProfondeurs: LIEN_PROFONDEURS, busFormat: busFormat() };
+    lienFormats: LIEN_FORMATS, lienProfondeurs: LIEN_PROFONDEURS, busFormat: busFormat(), emis: modeEmis() };
 }
 const poserLigne = (texte, cle, valeur) => { const re = new RegExp(`^\\s*${cle}=.*$`, 'm'), l = `${cle}=${valeur}`;
   return re.test(texte) ? texte.replace(re, l) : texte.replace(/\n?$/, '\n') + l + '\n'; };

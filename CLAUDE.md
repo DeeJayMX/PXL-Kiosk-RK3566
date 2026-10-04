@@ -169,3 +169,8 @@ Voir `README.md` pour la recette et `docs/README.md` pour l'index du dossier.
   RGB 8 et (251,44,171) en YUV 10. ⚠️ Mais le flux a un écart **préexistant** sur le bleu (+18), dans les deux cas :
   probablement une matrice 601/709 entre pxl-wb-enc et le décodeur — non instruit.
 - /admin affiche le `bus_format` réellement émis et prévient quand il ne correspond pas à la demande.
+- **Résolution réellement émise** (04/10, v1.18.0, demande d'Eliott) : /admin › Écran lit `Display mode` dans le summary
+  du VOP2 et **calcule** la cadence (`dclk ÷ htotal × vtotal`, × 2 en entrelacé — le nom du mode est arrondi), puis
+  prévient quand elle diffère du mode forcé. Vu le jour même : `SORTIE_MODE=1920x1080@25` sur un moniteur qui ne déclare
+  que du 60 Hz ⇒ repli **720p60** que rien n'affichait jusque-là. ⚠️ L'ordre de repli de `preview.sh` (720p50 › 1080p50 ›
+  720p60 › 1080p60) préfère le 720p60 au 1080p60 — non changé.
