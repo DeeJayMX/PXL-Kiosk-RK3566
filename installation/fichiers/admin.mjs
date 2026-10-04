@@ -209,8 +209,11 @@ async function regleMode(q) {
 // CE QUI s'affiche (Preview / Multiview) se choisit dans la console de l'habillage (⚙ Réglages) : la box ouvre /ecran.
 const CONF = '/etc/pxl-kiosk.conf', WESTON_INI = '/etc/pxl-kiosk/weston.ini';
 // « i » = entrelacé : Weston ne sait pas le choisir, pxl-mode le pose avant lui (preview.sh) et weston.ini dit « current »
-const MODES_HDMI = ['1280x720@25', '1280x720@50', '1920x1080@25', '1920x1080@50', '1920x1080i@50'];
-// En entrelacé : « 50i » (Weston à la trame, mouvement fluide à l'écran) ou « psf » (Weston à l'IMAGE, 25 img/s : chaque
+// Les cadences broadcast en 720p / 1080p / 1080i (demande d'Eliott, 04/10/2026 : 1080i60 vérifié sur la TV Samsung).
+// Ni 4K ni SD : le flux writeback est tissé et encodé en 1920×1080 (pxl-wb-enc), et Chromium en 4K écraserait la box.
+const MODES_HDMI = ['1280x720@25', '1280x720@30', '1280x720@50', '1280x720@60',
+  '1920x1080@24', '1920x1080@25', '1920x1080@30', '1920x1080@50', '1920x1080@60', '1920x1080i@50', '1920x1080i@60'];
+// En entrelacé (valeurs historiques nommées en 50 Hz, valables aussi en 60) : « 50i » (Weston à la trame, mouvement fluide à l'écran) ou « psf » (Weston à l'IMAGE, 25 img/s : chaque
 // image tient ses deux trames, donc écran ET flux writeback propres en mouvement — preview.sh pose PXL_PSF=1).
 const ENTRELACES = ['50i', 'psf'];
 // Les modes que l'écran BRANCHÉ déclare (pxl-mode --liste) : un mode absent n'est pas refusé — on règle parfois la box

@@ -245,6 +245,19 @@ RestartSec=3
 [Install]
 WantedBy=multi-user.target
 EOF
+# Garde HDMI : un écran rebranché laisse Weston sans image (premier commit refusé, jamais réessayé) — relance la preview
+cat > /etc/systemd/system/pxl-hdmi-garde.service <<EOF
+[Unit]
+Description=PXL — garde HDMI : écran branché mais rien balayé ⇒ relance de la preview
+After=pxl-preview.service
+[Service]
+ExecStart=$LIB/pxl-hdmi-garde.sh
+Restart=always
+RestartSec=5
+Nice=5
+[Install]
+WantedBy=multi-user.target
+EOF
 # Point d'accès de secours + partage de connexion USB (pxl-reseau-secours.sh ; réglé dans /admin : AP_MODE, AP_NOM,
 # AP_BANDE, mot de passe dans /etc/pxl-kiosk/ap.mdp). La veille ramène sur un Wi-Fi connu dès qu'il réapparaît.
 cat > /etc/systemd/system/pxl-ap-veille.service <<EOF
@@ -394,6 +407,7 @@ gcc -O2 -I/usr/include/libdrm -o "$LIB/pxl-mode" "$ICI/fichiers/pxl-mode.c" -ldr
 gcc -O2 -o "$LIB/pxl-wb-enc" "$ICI/fichiers/pxl-wb-enc.c" -lrockchip_mpp -lrga || meurs "compilation de pxl-wb-enc impossible"
 install -m 755 "$ICI/fichiers/pxl-wb.sh" "$LIB/pxl-wb.sh"
 install -m 755 "$ICI/fichiers/pxl-reseau-secours.sh" "$LIB/pxl-reseau-secours.sh"
+install -m 755 "$ICI/fichiers/pxl-hdmi-garde.sh" "$LIB/pxl-hdmi-garde.sh"
 # le pays de la radio : sans lui (« 00 »), les canaux permis en point d'accès sont les plus restreints
 echo "options cfg80211 ieee80211_regdom=FR" > /etc/modprobe.d/pxl-wifi-pays.conf
 install -m 755 "$ICI/fichiers/weston-pxl.sh" "$LIB/weston-pxl.sh"
@@ -453,12 +467,12 @@ fi
 dire "application depuis $APP_SOURCE…"; progres 65 "application d'habillage"
 /usr/local/bin/pxl-kiosk maj-app >/dev/null || meurs "copie de l'application impossible"
 if [ $EN_LIGNE = 0 ]; then
-  systemctl enable -q seatd pxl-serveur pxl-preview pxl-sante pxl-admin pxl-premier-demarrage pxl-ap-veille.timer
+  systemctl enable -q seatd pxl-serveur pxl-preview pxl-sante pxl-admin pxl-hdmi-garde pxl-premier-demarrage pxl-ap-veille.timer
   dire "✅ image préparée — tout démarrera au premier démarrage de la box"; exit 0
 fi
 systemctl enable -q pxl-premier-demarrage
 udevadm trigger --subsystem-match=misc --action=change 2>/dev/null || true   # pose /dev/video-dec0 tout de suite
-systemctl enable -q seatd pxl-serveur pxl-preview pxl-sante pxl-admin
+systemctl enable -q seatd pxl-serveur pxl-preview pxl-sante pxl-admin pxl-hdmi-garde
 # Weston patché (flux writeback sans copie) : reconstruit seulement si la version de Weston ou le patch ont changé.
 # Un échec n'arrête rien : l'écran garde le Weston d'Ubuntu, seul le flux TurboHQ est indisponible.
 progres 68 "Weston (flux sans copie)"
@@ -472,6 +486,7 @@ systemctl restart seatd pxl-serveur pxl-sante pxl-admin
 sleep 3
 systemctl restart pxl-preview
 [ "${WB_ACTIF:-0}" = 1 ] && systemctl restart pxl-wb
+systemctl restart pxl-hdmi-garde
 progres 80 "démarrage de l'écran"
 # attente ACTIVE : on vérifie dès que le serveur et Chromium répondent, au plus 30 s (c'était 30 s fixes, même prêts en 5)
 dire "attente du démarrage (30 s au plus)…"

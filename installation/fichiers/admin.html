@@ -145,15 +145,15 @@
   <section data-onglet="habillage">
     <h2>Sortie HDMI <span class="aide" tabindex="0">❔<span class="aide-texte">Seul l'écran HDMI de la box se relance (quelques secondes de noir) ; le serveur et l'antenne ne sont
       pas touchés. 720p : moins de travail pour la box. La TV doit accepter le mode choisi. En 1080i :
-      <b>50i</b> = une image par trame, mouvement fluide à l'écran mais le flux TurboHQ « peigne » ce qui bouge ;
-      <b>25p (PsF)</b> = une image pour deux trames (25 img/s), écran et flux propres même en mouvement, et deux fois
-      moins de travail pour Chromium. Ce qui s'affiche (Preview,
+      <b>fluide</b> = une image par trame, mouvement fluide à l'écran mais le flux TurboHQ « peigne » ce qui bouge ;
+      <b>PsF</b> = une image pour deux trames (25 img/s en 1080i50, 30 en 1080i60), écran et flux propres même en
+      mouvement, et deux fois moins de travail pour Chromium. Ce qui s'affiche (Preview,
       Multiview) se choisit dans la console de l'habillage, ⚙ Réglages.</span></span></h2>
     <form id="f-ecran">
       <div class="ligne">
         <div><label for="ecran-mode">Résolution de la sortie</label><select id="ecran-mode"></select></div>
         <div id="bloc-entrelace"><label for="ecran-entrelace">Cadence en entrelacé</label><select id="ecran-entrelace">
-          <option value="50i">50i — fluide</option><option value="psf">25p (PsF) — propre</option></select></div>
+          <option value="50i">Une image par trame — fluide</option><option value="psf">Une image pour deux trames (PsF) — propre</option></select></div>
       </div>
       <div class="actions"><button class="principal" type="submit">Appliquer — relance l'écran</button></div>
     </form>
