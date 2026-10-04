@@ -72,7 +72,12 @@
   #onglets button.actif { background: var(--accent); border-color: var(--accent); color: #06121f; }
   main[data-onglet] section[data-onglet] { display: none; }
   main[data-onglet="etat"] section[data-onglet="etat"], main[data-onglet="habillage"] section[data-onglet="habillage"],
+  main[data-onglet="ecran"] section[data-onglet="ecran"], main[data-onglet="flux"] section[data-onglet="flux"],
+  main[data-onglet="companion"] section[data-onglet="companion"],
   main[data-onglet="reseau"] section[data-onglet="reseau"], main[data-onglet="systeme"] section[data-onglet="systeme"] { display: block; }
+  /* 7 onglets (04/10 : « Habillage & écran » coupé en quatre) : défilent à l'horizontale sur un téléphone plutôt que de déborder */
+  #onglets { overflow-x: auto; }
+  #onglets button { flex: 1 0 auto; }
   .grandeheure { font-size: 28px; font-weight: 600; font-variant-numeric: tabular-nums; }
   .bandeau-mode { display: none; background: #4a2a06; border: 1px solid #f5a623; color: #ffd28a; border-radius: 8px; padding: 10px 14px; margin-bottom: 16px; font-weight: 600; }
   .bandeau-mode.visible { display: block; }
@@ -103,7 +108,7 @@
   <button id="b-deconnexion" type="button">Quitter</button>
 </header>
 <nav id="onglets">
-  <button type="button" data-o="etat">État</button><button type="button" data-o="habillage">Habillage &amp; écran</button><button type="button" data-o="reseau">Réseau</button><button type="button" data-o="systeme">Système</button>
+  <button type="button" data-o="etat">État</button><button type="button" data-o="habillage">Habillage</button><button type="button" data-o="ecran">Écran</button><button type="button" data-o="flux">Flux TurboHQ</button><button type="button" data-o="companion">Companion</button><button type="button" data-o="reseau">Réseau</button><button type="button" data-o="systeme">Système</button>
 </nav>
 <main>
   <div class="bandeau" id="bandeau">
@@ -142,7 +147,7 @@
     </form>
   </section>
 
-  <section data-onglet="habillage">
+  <section data-onglet="ecran">
     <h2>Sortie HDMI <span class="aide" tabindex="0">❔<span class="aide-texte">Seul l'écran HDMI de la box se relance (quelques secondes de noir) ; le serveur et l'antenne ne sont
       pas touchés. 720p : moins de travail pour la box. La TV doit accepter le mode choisi.
       <b>Mode forcé</b> : rebrancher le câble ne relance rien, l'image revient dès que la TV accroche.
@@ -162,7 +167,7 @@
     </form>
   </section>
 
-  <section data-onglet="habillage">
+  <section data-onglet="flux">
     <h2>Flux TurboHQ de la sortie HDMI <span class="aide" tabindex="0">❔<span class="aide-texte">Sans copie : le VOP2
       écrit l'image du HDMI, l'encodeur matériel la lit telle quelle. N'affecte ni l'écran ni l'antenne.</span></span></h2>
     <form id="f-wb">
@@ -213,7 +218,7 @@
     <div id="wb-etat" class="note"></div>
   </section>
 
-  <section data-onglet="habillage">
+  <section data-onglet="flux">
     <h2>Relais TurboHQ local <span class="aide" tabindex="0">❔<span class="aide-texte">Le relais de cette box : il
       reçoit les flux (celui de la box, ou d'autres publishers) et les sert aux spectateurs. Avec une clé, publishers
       <b>et</b> spectateurs doivent la donner (<code>?key=</code>) — y compris le flux de la box s'il vise ce relais.
@@ -234,7 +239,7 @@
     <div class="table"><table id="rel-t" class="cache"><thead><tr><th>Canal</th><th>Source</th><th>Spectateurs</th><th></th></tr></thead><tbody id="rel-canaux"></tbody></table></div>
   </section>
 
-  <section data-onglet="habillage">
+  <section data-onglet="companion">
     <h2>Companion (Satellite) <span class="aide" tabindex="0">❔<span class="aide-texte">Les Stream Deck branchés en
       USB sur cette box apparaissent comme surfaces dans le Companion de la régie (Bitfocus Companion Satellite). Dans
       Companion, la box se présente sous le nom « PixelMasters PXLnode » (Surfaces › Discover). Changer un réglage relance
@@ -827,7 +832,7 @@ charger().then(() => { if (E) chargerMaj(); });
 
 // ---- onglets
 (() => {
-  const ONGLETS = ['etat', 'habillage', 'reseau', 'systeme'];
+  const ONGLETS = ['etat', 'habillage', 'ecran', 'flux', 'companion', 'reseau', 'systeme'];
   const choisir = o => {
     if (!ONGLETS.includes(o)) o = 'etat';
     document.querySelector('main').dataset.onglet = o;

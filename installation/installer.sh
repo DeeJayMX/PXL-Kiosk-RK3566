@@ -123,6 +123,8 @@ if [ "$(/opt/node/bin/node -v 2>/dev/null)" != "${NODE_VER#node-}" ]; then
   (cd "$T" && curl -fsS $NODE_IDX/SHASUMS256.txt | grep " $NODE_TAR\$" | sha256sum -c --quiet) || meurs "empreinte Node fausse"
   tar xJf "$T/$NODE_TAR" -C /opt && ln -sfn "/opt/$NODE_VER-linux-arm64" /opt/node && rm -rf "$T"
 fi
+# node / npm / npx aussi à la ligne de commande (les services, eux, appellent /opt/node/bin/node en dur) — 04/10
+for b in node npm npx; do ln -sfn "/opt/node/bin/$b" "/usr/local/bin/$b"; done
 
 # ---- 2 bis. Companion Satellite (Stream Deck USB → Companion de la régie), installé mais ARRÊTÉ : /admin l'active --
 progres 33 "Companion Satellite"
