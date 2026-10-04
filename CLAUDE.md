@@ -93,3 +93,21 @@ Voir `README.md` pour la recette et `docs/README.md` pour l'index du dossier.
 ## Numéro de version
 
 `installation/VERSION` porte la version (MAJEUR.MINEUR.CORRECTIF), affichée sur la box (/admin, écran de démarrage, console). **À relever dans le commit qui livre un changement** : correctif → +0.0.1, fonction nouvelle → +0.1.0. Un numéro qui ne bouge pas ne dit plus ce qui tourne.
+
+## Passage sur l'eMMC interne (préparé le 04/10/2026)
+
+- **Sauvegarde de l'Android d'origine FAITE et VÉRIFIÉE** : `/root/sauvegarde-emmc/` sur la SD de la box — image complète de
+  `mmcblk2` en gzip (31 Go → 2,18 Go, relue et comparée par empreinte), `mmcblk2boot0/1`, table `sfdisk`. À copier aussi
+  hors de la box : `scp -r root@<box>:/root/sauvegarde-emmc .`
+- 🔴 **Ordre de démarrage relevé (lecture seule)** : le chargeur U-Boot 2017.09-armbian (SD) teste la **SD avant l'eMMC**
+  (`boot_targets=nvme mmc1 mmc0`, `rkimg_bootdev` : « Boot from SDcard »). SD insérée = la SD démarre, sans rien dire.
+  ⇒ pas de « double boot » automatique : la SD de secours se garde **hors de la box** ; l'insérer = démarrer dessus.
+- `installation/fichiers/emmc-installer.sh` : `--verifier` (rien écrit) / `--appliquer` (efface l'eMMC). Garde-fous :
+  système sur la SD, sauvegarde vérifiée (`SHA256SUMS`), chargeur à écrire identique À L'OCTET à celui de la SD, rien à
+  l'antenne. Même disposition que la SD, UUID neufs, copie rsync en deux passes (la seconde serveur arrêté), pas de
+  redémarrage. Ensuite : éteindre, RETIRER la SD, rallumer.
+- ⚠️ **Non prouvé** : que ce chargeur armbian démarre la box EN PREMIER ÉTAGE depuis l'eMMC (aujourd'hui l'eMMC porte le
+  chargeur Android, et on ne sait pas lequel des deux a tourné — pas de console série). S'il échoue, la box n'amorce plus
+  rien seule : retour par le mode **maskrom** (câble USB A-A, bouton reset) et RKDevTool / `rkdeveloptool`, image de la
+  sauvegarde. Vérifier le câble AVANT `--appliquer`.
+
