@@ -127,4 +127,12 @@ Voir `README.md` pour la recette et `docs/README.md` pour l'index du dossier.
   La SD (inchangée) est la carte de SECOURS : insérée, elle démarre en priorité. Sauvegarde de l'Android : sur la SD
   (`/root/sauvegarde-emmc`) et sur le SSD Samsung T7 « ATEM Rec » d'Eliott (`PXLnode-sauvegarde-eMMC-Android-2026-10-04`).
   ⚠️ La SD de secours se périme : avant la course, la remettre à niveau (l'insérer, démarrer dessus, `maj.mjs appliquer`).
+- 🔴 **Écran NOIR en 1080i50 au démarrage (04/10 au soir, sur l'eMMC)** : signal présent, mais le premier commit atomique
+  de Weston est refusé (`couldn't commit new state: Invalid argument`, `repaint-flush failed` ; drm.debug=0x1e : le noyau
+  abandonne pendant le réglage des propriétés du CONNECTEUR) et Weston ne réessaie jamais. **Course, pas mode refusé** :
+  même séquence (fbdev 4K30 → pxl-mode 1080i50 → Weston) tantôt OK tantôt KO. ⚠️ Piège de diagnostic : pendant 30 s, le
+  tampon noir de pxl-mode occupe un plan (`Smart0-win0: ACTIVE`) — un plan actif ne prouve pas l'image de Weston.
+  Correctifs (v1.16.2) : `preview.sh` attend 1 s après pxl-mode, puis lit le journal de Weston 3 s après son démarrage ;
+  refus ⇒ sortie, systemd relance (≈ 10 s). Mesuré : 6 relances, 6 images, dont 1 rattrapée seule. Et la garde HDMI
+  (v1.16.1) relance aussi quand le Video Port est actif sans AUCUN plan actif.
 

@@ -27,7 +27,8 @@ fi
 
 # Mode entrelacé (1080i50) : Weston ne sait pas le choisir (il prend le 1080p50) — pxl-mode le pose d'abord, et Weston
 # lit alors « mode=current ». Échec ⇒ on continue : Weston prendra le mode courant, quel qu'il soit.
-case "$MODE" in *i@*) /usr/local/lib/pxl-kiosk/pxl-mode "$MODE" "${SORTIE_NOM:-HDMI-A-1}" || true; WMODE=current ;; *) WMODE=$MODE ;; esac
+case "$MODE" in *i@*) /usr/local/lib/pxl-kiosk/pxl-mode "$MODE" "${SORTIE_NOM:-HDMI-A-1}" || true; WMODE=current; sleep 1 ;; *) WMODE=$MODE ;; esac
+# ⚠️ (04/10) le « sleep 1 » laisse le changement de mode se poser avant que Weston prenne la main : voir plus bas.
 
 # Entrelacé en PsF (ENTRELACE=psf, défaut — décision d'Eliott, 03/10 ; réglé dans /admin) : Weston patché se cadence à
 # l'IMAGE (25 Hz en 1080i50) au lieu de la trame — Chromium dessine 25 img/s, chaque image occupe ses deux trames (écran
@@ -46,6 +47,17 @@ weston --config="$INI" --log="$XDG_RUNTIME_DIR/weston.log" &
 WESTON=$!
 for i in $(seq 100); do [ -S "$XDG_RUNTIME_DIR/wayland-1" ] && break; sleep 0.1; done
 [ -S "$XDG_RUNTIME_DIR/wayland-1" ] || { echo "Weston n'a pas ouvert son socket — $XDG_RUNTIME_DIR/weston.log"; exit 1; }
+# 🔴 PREMIER COMMIT REFUSÉ (mesuré le 04/10/2026 au soir, 1080i50 sur la TV Samsung, après le passage sur l'eMMC) : environ
+# une fois sur deux, le premier commit atomique de Weston est rejeté (« atomic: couldn't commit new state: Invalid
+# argument » puis « repaint-flush failed » ; le noyau abandonne pendant le réglage des propriétés du CONNECTEUR, avant tout
+# contrôle de l'image) et Weston NE RÉESSAIE JAMAIS : signal présent, écran NOIR. La même séquence (fbdev 4K30 → pxl-mode
+# 1080i50 → Weston) réussit l'essai suivant : c'est une course, pas un mode refusé. ⇒ on regarde le journal 3 s après le
+# démarrage ; refus ⇒ on sort, et systemd relance tout (≈ 10 s) au lieu de laisser un écran noir.
+sleep 3
+if grep -q "repaint-flush failed\|couldn't commit new state" "$XDG_RUNTIME_DIR/weston.log"; then
+  echo "premier commit de Weston refusé (écran noir) — relance de la preview"
+  kill "$WESTON" 2>/dev/null; exit 1
+fi
 export WAYLAND_DISPLAY=wayland-1
 
 # Attendre le serveur d'habillage (sinon la page s'ouvre sur une erreur et ne se recharge pas d'elle-même)
