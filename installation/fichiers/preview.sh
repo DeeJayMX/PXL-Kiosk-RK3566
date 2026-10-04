@@ -57,7 +57,9 @@ for i in $(seq 100); do [ -S "$XDG_RUNTIME_DIR/wayland-1" ] && break; sleep 0.1;
 # 1080i50 → Weston) réussit l'essai suivant : c'est une course, pas un mode refusé. ⇒ on regarde le journal 3 s après le
 # démarrage ; refus ⇒ on sort, et systemd relance tout (≈ 10 s) au lieu de laisser un écran noir.
 sleep 3
-if grep -q "repaint-flush failed\|couldn't commit new state" "$XDG_RUNTIME_DIR/weston.log"; then
+# seulement « Invalid argument » : un « Device or resource busy » (EBUSY = « pas encore ») se rattrape tout seul — vu au
+# démarrage du 04/10 à 21 h 19, trois EBUSY et l'image affichée quand même
+if grep -q "couldn't commit new state: Invalid argument" "$XDG_RUNTIME_DIR/weston.log"; then
   echo "premier commit de Weston refusé (écran noir) — relance de la preview"
   kill "$WESTON" 2>/dev/null; exit 1
 fi
