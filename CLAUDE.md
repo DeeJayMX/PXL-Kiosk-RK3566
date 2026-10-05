@@ -285,3 +285,9 @@ Voir `README.md` pour la recette et `docs/README.md` pour l'index du dossier.
   carte : recette 1.24.2, habillage 1.35.1, Weston corrigé (`drm-backend.so` identique à l'octet), TurboHQ `7993826` ;
   `e2fsck -n` : propres. Même état PXLnet que l'eMMC (même nœud, même adresse). ⚠ Insérée, elle démarre EN PRIORITÉ :
   à garder hors de la box ; elle se repérime à chaque mise à jour.
+- **Mode d'emploi de l'admin** (05/10, v1.25.0, Eliott) — `fichiers/admin-doc.html`, servi par `admin.mjs` sur **`/doc`**
+  (lisible sans connexion : page statique, rien de la box dedans), installé par `installer.sh` ; lien « Mode d'emploi » dans
+  l'en-tête de /admin (nouvel onglet). Chaque onglet, chaque réglage et ce qu'il fait, rédigé d'après `admin.html` / `admin.mjs`
+  — à tenir à jour avec eux. Pendant côté habillage : `/doc-habillage` (app v1.36.0). ⚠ `admin.html` n'a reçu qu'un lien et son
+  CSS ; `node --check` de son script passé, page non rendue avec l'état réel (pas de box joignable à ce moment-là).
+

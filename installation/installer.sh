@@ -165,6 +165,7 @@ printf '{\n  "TranslateEnabled": false\n}\n' > /etc/chromium/policies/managed/px
 install -m 644 "$ICI/fichiers/sante.mjs"  "$LIB/sante.mjs"
 install -m 644 "$ICI/fichiers/admin.mjs"  "$LIB/admin.mjs"
 install -m 644 "$ICI/fichiers/admin.html" "$LIB/admin.html"
+install -m 644 "$ICI/fichiers/admin-doc.html" "$LIB/admin-doc.html"
 install -m 644 "$ICI/fichiers/maj.mjs"    "$LIB/maj.mjs"     # mises à jour depuis GitHub (section de /admin, pxl-kiosk maj)
 install -m 755 "$ICI/fichiers/pxl-kiosk"  /usr/local/bin/pxl-kiosk
 install -m 755 "$ICI/fichiers/premier-demarrage.sh" "$LIB/premier-demarrage.sh"

@@ -817,6 +817,12 @@ function serveur() {
           'content-security-policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'" });
         return res.end(readFileSync(join(ICI, 'admin.html')));
       }
+      // mode d'emploi de l'admin : page statique, rien de la box dedans (lisible sans connexion, comme la page de connexion)
+      if (u.pathname === '/doc') {
+        res.writeHead(200, { ...ENTETES, 'content-type': 'text/html; charset=utf-8',
+          'content-security-policy': "default-src 'self'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'" });
+        return res.end(readFileSync(join(ICI, 'admin-doc.html')));
+      }
       if (!u.pathname.startsWith('/api/')) return json(res, 404, { erreur: 'introuvable' });
       // toute écriture porte l'en-tête maison : une page d'un autre site ne peut pas l'envoyer sans autorisation CORS
       if (req.method === 'POST' && req.headers['x-pxl-admin'] !== '1') return json(res, 403, { erreur: 'en-tête manquant' });

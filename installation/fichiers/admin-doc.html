@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin PXLnode — mode d'emploi</title>
+<style>
+  :root { --fond: #0f1216; --carte: #171b21; --trait: #2a313a; --texte: #e8ecf1; --doux: #8b95a1; --accent: #4aa8ff; --rose: #ea2a82; --code: #222831; --ko: #e5383b; }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) { --fond: #f3f4f7; --carte: #fff; --trait: #dde0e7; --texte: #16171d; --doux: #5d6272; --accent: #1f7fd0; --rose: #d81f74; --code: #eceef3; --ko: #c62f32; }
+  }
+  :root[data-theme="light"] { --fond: #f3f4f7; --carte: #fff; --trait: #dde0e7; --texte: #16171d; --doux: #5d6272; --accent: #1f7fd0; --rose: #d81f74; --code: #eceef3; --ko: #c62f32; }
+  body { margin: 0; background: var(--fond); color: var(--texte); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; padding: 24px 16px 48px; }
+  .page { max-width: 1000px; margin: 0 auto; display: grid; gap: 20px; }
+  h1 { font-size: 30px; margin: 0; line-height: 1.15; } h1 span { color: var(--rose); }
+  h2 { font-size: 21px; margin: 0 0 8px; border-bottom: 3px solid var(--accent); padding-bottom: 6px; }
+  h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 1px; color: var(--doux); margin: 14px 0 6px; }
+  p { margin: 4px 0; } .sous { color: var(--doux); max-width: 75ch; }
+  a { color: var(--accent); }
+  nav { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 14px; }
+  section { background: var(--carte); border: 1px solid var(--trait); border-radius: 10px; padding: 16px 18px 18px; min-width: 0; }
+  ul { margin: 4px 0; padding-left: 20px; display: grid; gap: 3px; }
+  code { font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; background: var(--code); padding: 1px 5px; border-radius: 4px; word-break: break-word; }
+  .tableau { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th { text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: .8px; color: var(--doux); padding: 0 10px 4px 0; }
+  td { border-top: 1px solid var(--trait); padding: 6px 10px 6px 0; vertical-align: top; }
+  td:first-child { font-weight: 600; min-width: 9em; }
+  .note { border-left: 3px solid var(--accent); padding: 6px 10px; background: var(--code); border-radius: 0 6px 6px 0; margin-top: 8px; }
+  .note.alerte { border-color: var(--ko); }
+  footer { color: var(--doux); font-size: 13px; border-top: 1px solid var(--trait); padding-top: 12px; }
+  @media print { :root { --fond: #fff; --carte: #fff; --texte: #111; --doux: #555; --trait: #ccc; --code: #f1f1f1; } nav { display: none; } section { border: none; padding: 0; } }
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <h1>Admin <span>PXLnode</span> — mode d'emploi</h1>
+    <p class="sous">Chaque onglet de l'administration de la box (port 8791), chaque réglage et ce qu'il fait. Un ❔ dans l'admin rappelle l'essentiel sur place.
+      <a href="/">Retour à l'admin</a></p>
+    <nav><a href="#etat">État</a><a href="#habillage">Habillage</a><a href="#ecran">Écran</a><a href="#flux">Flux TurboHQ</a><a href="#companion">Companion</a><a href="#reseau">Réseau</a><a href="#systeme">Système</a><a href="#adresses">Adresses</a></nav>
+  </header>
+
+  <section>
+    <h2>En-tête</h2>
+    <ul>
+      <li><b>Nom de la machine</b> et <b>version</b> de la box (recette PXLnode).</li>
+      <li><b>Rafraîchir</b> relit tout ; la page se rafraîchit aussi seule. <b>Quitter</b> ferme la session (elle expire aussi seule).</li>
+      <li>Un <b>bandeau orange</b> rappelle quand l'habillage n'est pas en mode Course. Un <b>bandeau de confirmation</b> apparaît après un changement réseau (voir Réseau).</li>
+      <li>Connexion : 5 mots de passe faux de suite bloquent 1 minute.</li>
+    </ul>
+  </section>
+
+  <section id="etat">
+    <h2>État</h2>
+    <p>Lecture seule : rien ici ne change la box.</p>
+    <div class="tableau"><table>
+      <tr><th>Bloc</th><th>Ce qu'il montre</th></tr>
+      <tr><td>État</td><td>Internet joignable ou non, adresses de chaque interface (Ethernet, Wi-Fi, USB, PXLnet), passerelle, DNS, PXLnet connecté, adresses HTTPS PXLnet publiées, temps depuis le démarrage.</td></tr>
+      <tr><td>Matériel</td><td>Températures (processeur, GPU…) colorées par rapport au seuil de bridage, bridage thermique en cours, fréquences du processeur et du GPU.</td></tr>
+      <tr><td>Surveillance</td><td>Disque système (eMMC, ou « Carte SD » si la box a démarré sur la carte de secours) : écrit depuis le démarrage et rythme moyen (affiché après une minute). Images par seconde de la page affichée sur le HDMI, mode HDMI émis, signal Wi-Fi.</td></tr>
+    </table></div>
+    <p class="note">Un rythme d'écriture qui monte en continu signale un programme qui écrit sur le disque : à signaler. Des images par seconde sous 70 % de la cadence de sortie passent au rouge.</p>
+  </section>
+
+  <section id="habillage">
+    <h2>Habillage</h2>
+    <h3>Mode du serveur d'habillage</h3>
+    <div class="tableau"><table>
+      <tr><th>Mode</th><th>Ce qu'il fait</th></tr>
+      <tr><td>Course</td><td>En direct, sur la configuration du jour J.</td></tr>
+      <tr><td>Démo</td><td>Un trail déjà terminé, pour montrer l'habillage.</td></tr>
+      <tr><td>Répétition</td><td>Chaumont 2025 rejoué à partir d'une <b>heure de départ</b> (heure de la course), à une <b>vitesse</b> ×1, ×2, ×5, ×10, ×30 ou ×60.</td></tr>
+    </table></div>
+    <ul>
+      <li><b>Appliquer</b> relance le serveur d'habillage : ce qui était à l'antenne revient prêt au PVW.</li>
+      <li>Démo et Répétition ont leurs propres réglages : ceux de la course ne sont pas touchés.</li>
+      <li class="note alerte" style="list-style:none;margin-left:-20px">Au redémarrage de la box, le mode revient <b>toujours</b> sur Course.</li>
+    </ul>
+    <h3>Mises à jour</h3>
+    <p>Trois blocs, chacun avec sa version installée et son commit : <b>Habillage</b> (l'app), <b>Box</b> (la recette PXLnode), <b>TurboHQ</b> (relais + client). Source : GitHub.</p>
+    <div class="tableau"><table>
+      <tr><th>Bouton</th><th>Ce qu'il fait</th></tr>
+      <tr><td>Vérifier</td><td>Regarde s'il y a plus récent ; ne change rien.</td></tr>
+      <tr><td>Appliquer</td><td>Installe la version vérifiée. Habillage : l'état de la régie et les photos sont gardés ; si seules les pages changent, le serveur n'est pas relancé. TurboHQ : ne relance le relais ou le flux que si leurs fichiers changent.</td></tr>
+      <tr><td>Revenir à la précédente</td><td>Réinstalle la version d'avant la dernière mise à jour.</td></tr>
+      <tr><td>Clé de la box pour GitHub</td><td>La clé publique à ajouter une fois aux dépôts (clé de déploiement, lecture seule).</td></tr>
+    </table></div>
+    <p class="note">Pendant une mise à jour, la preview et le multiview de la box affichent une popup d'avancement ; jamais la page PGM. Une mise à jour qui relance le serveur renvoie l'antenne au PVW : faire un TAKE après.</p>
+  </section>
+
+  <section id="ecran">
+    <h2>Écran — sortie HDMI</h2>
+    <p>Seul l'écran HDMI de la box se relance (quelques secondes de noir) ; le serveur et l'antenne ne sont pas touchés. Ce que l'écran affiche (Preview, Program, Multiview) se choisit dans la console de l'habillage, ⚙ Réglages.</p>
+    <div class="tableau"><table>
+      <tr><th>Réglage</th><th>Choix</th><th>Ce qu'il fait</th></tr>
+      <tr><td>Résolution</td><td>AUTO · 720p 25/30/50/60 · 1080p 24/25/30/50/60 · 1080i 50/60</td><td>Mode forcé : émis même si l'écran ne le déclare pas ; rebrancher le câble ne relance rien. AUTO : le premier mode accepté parmi 1080i50 › 1080p50 › 720p50 › 1080i60 › 1080p60 › 720p60 ; brancher un AUTRE écran relance la sortie (~10 s de noir). 720p = moins de travail pour la box.</td></tr>
+      <tr><td>Cadence en entrelacé</td><td>Fluide · PsF</td><td>Fluide : une image par trame, mouvement fluide mais le flux TurboHQ « peigne ». PsF : une image pour deux trames (25 ou 30 img/s), écran et flux propres, deux fois moins de travail.</td></tr>
+      <tr><td>Format du signal</td><td>RGB (défaut) · YUV 4:2:2 · YUV 4:4:4 · AUTO</td><td>YUV 4:2:2 pour un convertisseur SDI ou un mélangeur. Si l'écran ne déclare pas le format, la box retombe en RGB 8 bits : la ligne « Émis en ce moment » dit ce qui sort vraiment.</td></tr>
+      <tr><td>Profondeur</td><td>8 bits (défaut) · 10 bits</td><td>10 bits pour le signal ; l'habillage reste dessiné en 8 bits.</td></tr>
+    </table></div>
+    <p class="note">Une garde surveille la sortie : elle vérifie toutes les 15 s, et aussitôt sur un débranchement ou un refus de Weston ; si l'écran est branché mais que rien n'est affiché à trois lectures de suite, elle relance la preview (au plus une fois par 30 s).</p>
+  </section>
+
+  <section id="flux">
+    <h2>Flux TurboHQ</h2>
+    <h3>Flux de la sortie HDMI</h3>
+    <p>Publie ce que la box affiche sur le HDMI, sans copie (encodeur matériel). N'affecte ni l'écran ni l'antenne.</p>
+    <div class="tableau"><table>
+      <tr><th>Réglage</th><th>Ce qu'il fait</th></tr>
+      <tr><td>Publier</td><td>Active ou coupe le flux.</td></tr>
+      <tr><td>Nom du canal</td><td>Le nom sous lequel les spectateurs choisissent le flux sur le relais.</td></tr>
+      <tr><td>Relais de destination</td><td>Local = le relais de cette box (<code>ws://127.0.0.1:8080</code>). Personnalisé = une autre machine, <code>ws://&lt;adresse&gt;:8080</code>. « Chercher les relais du réseau » liste ceux qui s'annoncent, plus les 8 derniers choisis.</td></tr>
+      <tr><td>Clé d'accès</td><td>Seulement si le relais visé en exige une. Jamais réaffichée ; vide = garder l'actuelle ; « retirer la clé » l'efface.</td></tr>
+      <tr><td>Codec</td><td>H.264 : lu partout. H.265 : 30 à 40 % de débit en moins, mais le spectateur doit savoir le décoder.</td></tr>
+      <tr><td>Cadence</td><td>AUTO (celle de la sortie HDMI) · 24 · 25 · 30 · 50 · 60 img/s.</td></tr>
+      <tr><td>Débit</td><td>500 à 20 000 kbit/s.</td></tr>
+      <tr><td>Mode de débit</td><td>CBR : constant (±6 %), pour un lien tendu. VBR : moyenne visée, pointes ×1,5.</td></tr>
+      <tr><td>GOP</td><td>Image clé toutes les 0,5 · 1 · 2 · 4 s. Plus long = moins de débit perdu, mais arrivée et reprise plus lentes.</td></tr>
+    </table></div>
+    <h3>Relais TurboHQ local</h3>
+    <div class="tableau"><table>
+      <tr><th>Réglage</th><th>Ce qu'il fait</th></tr>
+      <tr><td>Relais en service</td><td>Relais sur le port 8080, annoncé sur le réseau ; viewers sur <code>http://&lt;box&gt;:8080</code> et en HTTPS sur l'adresse PXLnet.</td></tr>
+      <tr><td>Nom annoncé</td><td>Le nom vu par les autres machines dans leur recherche.</td></tr>
+      <tr><td>Clé d'accès</td><td>Optionnelle. Avec une clé, publishers et spectateurs la donnent (<code>?key=</code>), flux de la box compris. Indispensable si le relais est exposé sur Internet.</td></tr>
+    </table></div>
+    <p>Le tableau dessous liste les canaux en cours : source et nombre de spectateurs. Appliquer relance le relais : les flux coupent quelques secondes.</p>
+  </section>
+
+  <section id="companion">
+    <h2>Companion</h2>
+    <h3>Companion Satellite</h3>
+    <p>Les Stream Deck branchés en USB sur la box apparaissent comme surfaces dans le Companion de la régie, sous le nom « PixelMasters PXLnode » (Surfaces › Discover).</p>
+    <div class="tableau"><table>
+      <tr><th>Réglage</th><th>Ce qu'il fait</th></tr>
+      <tr><td>Relais Satellite en service</td><td>Active ou coupe le lien avec Companion.</td></tr>
+      <tr><td>Serveur Companion</td><td>Adresse IP ou nom du PC qui fait tourner Companion.</td></tr>
+      <tr><td>Connexion</td><td>TCP (port 16622) : direct. WebSocket (port 16623) : passe mieux les proxys et pare-feu.</td></tr>
+      <tr><td>Port</td><td>À changer seulement si Companion n'utilise pas le port par défaut.</td></tr>
+    </table></div>
+    <p>Le tableau des surfaces donne chaque Stream Deck branché, son numéro de série et son identifiant dans Companion (fixe : il ne change ni de box ni de port USB). Appliquer relance Satellite : les touches s'éteignent une ou deux secondes.</p>
+    <p class="note alerte">Si l'adresse réseau de la box change (Ethernet débranché, autre réseau), Satellite peut rester accroché à l'ancienne : Appliquer sans rien changer le relance.</p>
+    <h3>Module Companion de l'habillage</h3>
+    <p>Le module « PXL Urban Trail » à importer dans Companion (Modules › Import module package). <b>Télécharger le module</b> donne le fichier ; <b>Rechercher une nouvelle version</b> va le chercher sur GitHub. La box le récupère aussi à chaque mise à jour de l'habillage.</p>
+  </section>
+
+  <section id="reseau">
+    <h2>Réseau</h2>
+    <p>Priorité : partage USB, puis Ethernet, puis Wi-Fi.</p>
+    <div class="tableau"><table>
+      <tr><th>Bloc</th><th>Réglage</th><th>Ce qu'il fait</th></tr>
+      <tr><td>Ethernet</td><td>Automatique (DHCP) · Fixe</td><td>En fixe : adresse IP, masque, passerelle, DNS. Une adresse de secours (affichée dans le ❔) reste toujours joignable quand aucun DHCP ne répond. Câble rebranché : le bail DHCP est redemandé seul.</td></tr>
+      <tr><td>Wi-Fi</td><td>Réseaux connus, Ajouter, Chercher</td><td>Le réseau connu de plus haute priorité visible est choisi. Ajouter : nom, mot de passe, priorité (−999 à 999). Connecter / Supprimer par réseau.</td></tr>
+      <tr><td>Point d'accès de secours</td><td>Auto · Forcé · Coupé</td><td>Auto : sans Wi-Fi connu visible, la box ouvre son propre réseau et revient seule sur un Wi-Fi connu (vérifié toutes les 2 min, jamais tant qu'un appareil y est connecté). Bande 2,4 GHz (portée) ou 5 GHz (débit), nom, mot de passe (8 car. min). Connecté dessus : console <code>http://10.42.0.1:8765</code>, admin <code>http://10.42.0.1:8791</code>.</td></tr>
+      <tr><td>Partage de connexion USB</td><td>—</td><td>Téléphone en USB avec partage activé : la box prend Internet dessus, en priorité ; débranché, elle revient sur ses autres réseaux. Android : Partage USB. iPhone : Partage de connexion, puis « Se fier à cet ordinateur ».</td></tr>
+    </table></div>
+    <p class="note alerte">Tout changement réseau doit être <b>confirmé</b> dans le bandeau : sans confirmation, la box revient seule à l'ancien réglage (au cas où le changement l'aurait rendue injoignable).</p>
+  </section>
+
+  <section id="systeme">
+    <h2>Système</h2>
+    <div class="tableau"><table>
+      <tr><th>Bloc</th><th>Réglage</th><th>Ce qu'il fait</th></tr>
+      <tr><td>Heure</td><td>—</td><td>Heure de la box, heure du navigateur, état de la synchronisation et sources de temps (état, strate, écart).</td></tr>
+      <tr><td>Heure</td><td>Serveurs de temps locaux</td><td>Pour un car sans Internet : adresses (ex. le PC vMix). Sur le PC : lancer une fois <code>serveur-heure-windows.cmd</code> en administrateur.</td></tr>
+      <tr><td>Heure</td><td>Mettre la box à l'heure de ce navigateur</td><td>Dernier recours, si aucune source n'est joignable. Vérifier d'abord l'heure de l'appareil.</td></tr>
+      <tr><td>Machine</td><td>Relancer le serveur d'habillage</td><td>L'antenne revient au PVW : TAKE après.</td></tr>
+      <tr><td>Machine</td><td>Relancer la preview</td><td>Relance l'écran HDMI (Weston + Chromium), quelques secondes de noir sur la box ; l'antenne n'est pas touchée.</td></tr>
+      <tr><td>Machine</td><td>Redémarrer · Éteindre la box</td><td>Avec confirmation. Redémarrer remet le mode Course. Si une carte SD est insérée, la box démarre dessus.</td></tr>
+      <tr><td>Machine</td><td>Services, versions</td><td>État de chaque service (habillage, preview, PXLnet, Satellite, relais…), versions installées.</td></tr>
+      <tr><td>Machine</td><td>Journal</td><td>Journal d'un service au choix (habillage, mise à jour, preview, heure, réseau, PXLnet, administration, santé). Gardé en mémoire seulement : repart à zéro au démarrage.</td></tr>
+      <tr><td>Mot de passe</td><td>Actuel, nouveau</td><td>Change le mot de passe de l'admin (8 caractères au moins).</td></tr>
+    </table></div>
+  </section>
+
+  <section id="adresses">
+    <h2>Adresses de la box</h2>
+    <div class="tableau"><table>
+      <tr><th>Port</th><th>Service</th></tr>
+      <tr><td>8765</td><td>Habillage : accueil, console, preview, PGM, doc de l'habillage (<code>/doc-habillage</code>), cheatlist.</td></tr>
+      <tr><td>8791</td><td>Cette administration ; ce mode d'emploi sur <code>/doc</code>.</td></tr>
+      <tr><td>8080</td><td>Relais TurboHQ et viewers.</td></tr>
+      <tr><td>443 (PXLnet)</td><td><code>https://&lt;nom&gt;.ts.net</code> → TurboHQ en HTTPS (lecture WebCodecs dans le navigateur).</td></tr>
+    </table></div>
+    <p class="note">L'adresse PXLnet (100.x) ne change pas d'un réseau à l'autre ; les adresses Ethernet et Wi-Fi, si.</p>
+  </section>
+
+  <footer>© PixelMasters 2026 · PXLnode</footer>
+</div>
+</body>
+</html>
