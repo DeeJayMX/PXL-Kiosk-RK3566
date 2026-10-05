@@ -248,3 +248,18 @@ Voir `README.md` pour la recette et `docs/README.md` pour l'index du dossier.
   Recalé à `1.24.0` / `20a5bd22d34f` ; anciens fichiers gardés en `*.avant-1.24.0`. ⚠ Ce contrôle ne couvre PAS les
   unités systemd ni `/etc/pxl-kiosk.conf` écrites par `installer.sh` : un « box » rejoué depuis /admin reste le seul
   état garanti. Leçon : **poser un fichier à la main, c'est aussi désynchroniser l'étiquette** — la relever dans le même geste.
+- 🔴 **Oops du noyau provoqué par NOTRE garde HDMI — lectures du summary divisées par 10** (05/10, v1.24.1, décision
+  d'Eliott : 15 s). **Mesuré** : `dmesg` à 05:40:44 (uptime 14545 s) — `Unable to handle kernel NULL pointer dereference
+  at 0x38`, `pc : vop2_crtc_debugfs_dump+0x12c`, appelé par `rockchip_drm_summary_show` ← `seq_read`, **Comm: grep** :
+  le `grep` de `pxl-hdmi-garde.sh` qui lisait `/sys/kernel/debug/dri/0/summary` (2 lectures toutes les 2 s, ~23 000 en
+  6 h 20). Le grep a été tué, l'image, le flux et les 9 services ont continué (0 relance), le summary se relit normalement
+  ensuite ; noyau marqué « Tainted ». ⚠ Déduit, non prouvé : le code de debugfs du pilote lit un état de plan qui change
+  sous lui — un Oops qui tomberait verrou pris pourrait figer l'affichage. ⇒ **UNE lecture par vérification** (`cat` dans
+  une variable, motifs bash), **toutes les `GARDE_FILET_S` (15 s)**, et **aussitôt sur événement** : drm (branché /
+  débranché), ligne « couldn't commit new state » / « repaint-flush failed » dans le journal de Weston (`tail -F`),
+  journal recréé (preview relancée). Lecture anormale ⇒ 2 relectures de confirmation à 2 s, relance comme avant
+  (TENUE 3, ECART 30). Le journal de Weston DÉCLENCHE, il ne décide jamais (prédicat = l'état du scanout, inchangé).
+  ✅ Banc sur faux fichiers (filet 4 s) : sain = 1 lecture / 4 s ; refus Weston ⇒ lecture en 10 ms ; journal recréé ⇒
+  immédiate ; image absente ⇒ 3 lectures puis relance. ✅ Box : **6 lectures en 61 s** (contre ~60), via une trace posée
+  dans `/run` puis retirée. Estimation (1 seul Oops observé, ordre de grandeur) : ~1 tous les 4 jours au lieu de ~6 h.
+  ⚠ /admin lit aussi le summary (3× par rafraîchissement, page ouverte seulement) — non touché.

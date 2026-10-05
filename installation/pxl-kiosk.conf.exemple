@@ -30,6 +30,9 @@ PREVIEW_URL=http://127.0.0.1:8765/ecran
 # branché (1080i50 › 1080p50 › 720p50 › 1080i60 › 1080p60 › 720p60), relance si on change d'écran. Réglable dans /admin.
 SORTIE_NOM=HDMI-A-1
 SORTIE_MODE=1920x1080i@50
+# Garde HDMI : intervalle (s) entre deux lectures du summary du VOP2 (debugfs) quand rien ne se passe — chaque lecture
+# a une petite chance de déclencher un Oops du pilote Rockchip (vu le 05/10). Événements (écran, refus de Weston) : aussitôt.
+GARDE_FILET_S=15
 # En entrelacé (1920x1080i@50) : psf (défaut, décision du 03/10) = une image pour deux trames, 25 img/s, écran et flux
 # TurboHQ propres en mouvement (Weston patché requis) ; 50i = une image par trame, fluide. Réglable dans /admin.
 ENTRELACE=psf
