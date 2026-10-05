@@ -276,3 +276,12 @@ Voir `README.md` pour la recette et `docs/README.md` pour l'index du dossier.
   + `kernel.print-fatal-signals=1` (le noyau note l'adresse d'un plantage) et `pxl-weston-journal` (copie continue de
   `weston.log` dans `/run/pxl-weston-histoire.log`, 2 h). ⚠ Piège rencontré au diagnostic : `pgrep -f -- --type=` se
   trouve lui-même (la ligne de commande du shell contient le motif) — j'ai cru à des processus Chromium qui tournaient.
+- ✅ **Carte SD de secours remise au niveau de l'eMMC** (05/10, 09 h 15, demande d'Eliott avant d'éteindre) — copie
+  inverse de `emmc-installer.sh`, box en marche sur l'eMMC : carte montée (`mmcblk0`, 14,6 Go, BOOT/ROOTFS), `rsync
+  -aHAXx` de `/` en deux passes (à chaud : 916 fichiers / 30 Mo en 27 s ; puis `--delete`, serveur d'habillage arrêté
+  16 s), `/boot` recopiée, puis UUID de l'eMMC → UUID de la CARTE dans `fstab`, `armbianEnv.txt` et `extlinux`
+  (0 occurrence de l'eMMC restante). 🔴 `--exclude=/root/sauvegarde-emmc` : la sauvegarde de l'Android d'origine n'existe
+  QUE sur la carte — un `--delete` sans cette exclusion l'aurait effacée (vérifiée présente après copie). Résultat sur la
+  carte : recette 1.24.2, habillage 1.35.1, Weston corrigé (`drm-backend.so` identique à l'octet), TurboHQ `7993826` ;
+  `e2fsck -n` : propres. Même état PXLnet que l'eMMC (même nœud, même adresse). ⚠ Insérée, elle démarre EN PRIORITÉ :
+  à garder hors de la box ; elle se repérime à chaque mise à jour.
