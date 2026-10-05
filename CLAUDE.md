@@ -88,6 +88,7 @@ Voir `README.md` pour la recette et `docs/README.md` pour l'index du dossier.
 | **1080i50 noir** sur la TV Samsung de la régie, 1080i60 et 720p50 OK | non trouvé : le signal émis est conforme (timings CEA 2640/1125, VIC 20 dans l'AVI, mesurés au registre dw-hdmi le 04/10) et le writeback montre la bonne image — c'est la TV qui ne l'affiche pas | la TV du labo affichait le 1080i50 (03/10). /admin propose désormais 720p 25-60, 1080p 24-60, 1080i 50/60 (v1.14.0) ; pas de 4K ni de SD (flux writeback tissé en 1920×1080) |
 | Companion Satellite : « `getDevices error: /sys/bus/usb/devices/ not found` » et arrêt au démarrage | machine sans bus USB (VM, conteneur) : le module de surface énumère l'USB et l'erreur n'est pas rattrapée (mesuré 04/10, Satellite 3.4.1 x64) | sans objet sur la box ; pour un essai : `unshare -m` + tmpfs sur `/sys/bus` avec un `usb/devices` vide |
 | Règles udev de Satellite introuvables (`satellite/assets/linux/50-satellite.rules`) | ce chemin n'existe que dans les SOURCES ; le paquet officiel les met à SA RACINE, hors de `app.asar` (vu 04/10) | `satellite-installer.sh` les copie vers `/opt/companion-satellite/50-satellite.rules` ; /admin y lit les fabricants reconnus |
+| 🔴 **Weston tué par SIGSEGV au débranchement HDMI** (1 fois sur 3 ; la preview se relance, ~6 s de noir) | notre patch `weston-writeback-flux.patch` gardait la sortie dans `pxl.output` et un minuteur (toutes les 1000/fps ms) demandait de la redessiner ; au débranchement Weston LIBÈRE la sortie (`drm_output_destroy`, différé tant qu'un flip est en vol) et le pointeur n'était jamais oublié — usage après libération. Le flux « repartait » quand la sortie recréée retombait à la même adresse (lu dans le code, 05/10 ; non prouvé par une trace : aucun core, journal de Weston écrasé par la relance) | v1.24.2 : `pxl_wb_output_gone()` appelée par `drm_output_deinit()` et `drm_output_destroy()` — oublie la sortie, arrête le minuteur, rend une case en vol ; `pxl_wb_pick()` relance le minuteur au retour. ✅ Mesuré : 8 débranchements (de 1 à 7 s), **0 plantage, 0 relance**, « flux suspendu » / « flux repris » à chaque fois, flux à 59 img/s ensuite |
 | Logo d'allumage de la box (avant Linux) | il vient du U-Boot **Android en eMMC** (partitions `uboot`/`boot`), pas de `/boot/boot.bmp` : `bootlogo=true` d'Armbian n'ajoute qu'un paramètre `bootsplash` inopérant sur ce noyau (vu 02/10) | ne pas y toucher sans décision explicite : réécrire l'eMMC peut rendre la box indémarrable (récupération en maskrom) |
 
 ## Numéro de version
@@ -263,3 +264,15 @@ Voir `README.md` pour la recette et `docs/README.md` pour l'index du dossier.
   immédiate ; image absente ⇒ 3 lectures puis relance. ✅ Box : **6 lectures en 61 s** (contre ~60), via une trace posée
   dans `/run` puis retirée. Estimation (1 seul Oops observé, ordre de grandeur) : ~1 tous les 4 jours au lieu de ~6 h.
   ⚠ /admin lit aussi le summary (3× par rafraîchissement, page ouverte seulement) — non touché.
+- 🔴 **Weston planté au débranchement HDMI — usage d'une sortie libérée par NOTRE patch** (05/10, v1.24.2, demande
+  d'Eliott). Vu au test débranchement / rebranchement (08:43:41) : `Segmentation fault weston` ⇒ la preview sort, systemd
+  la relance (~6 s de noir) ; les deux débranchements suivants passent. **Cause lue dans le code** (`drm.c` patché +
+  sources Ubuntu de Weston 13.0.0-4build3, extraites sur la box) : `pxl.output` n'était jamais remis à zéro, et
+  `pxl_timer_cb()` appelait `weston_output_schedule_repaint(&pxl.output->base)` sur une sortie que
+  `drm_output_destroy()` venait de libérer. ⚠ Non prouvé par une trace (pas de core : `core_pattern=core` sans dossier
+  inscriptible, `debug.exception-trace=0`, et `weston.log` est RÉÉCRIT à chaque relance). Correctif : `pxl_wb_output_gone()`.
+  Reconstruit sur la box par `weston-pxl.sh --forcer` (80 s). ✅ **8 débranchements, 0 plantage, 0 relance**, flux
+  suspendu puis repris à chaque fois. Pour la suite, posés à l'exécution (perdus au redémarrage) : `debug.exception-trace=1`
+  + `kernel.print-fatal-signals=1` (le noyau note l'adresse d'un plantage) et `pxl-weston-journal` (copie continue de
+  `weston.log` dans `/run/pxl-weston-histoire.log`, 2 h). ⚠ Piège rencontré au diagnostic : `pgrep -f -- --type=` se
+  trouve lui-même (la ligne de commande du shell contient le motif) — j'ai cru à des processus Chromium qui tournaient.

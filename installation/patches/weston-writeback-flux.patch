@@ -1,6 +1,6 @@
 diff -ruN a/libweston/backend-drm/drm-internal.h b/libweston/backend-drm/drm-internal.h
---- a/libweston/backend-drm/drm-internal.h	2026-10-03 09:15:12.909672074 +0000
-+++ b/libweston/backend-drm/drm-internal.h	2026-10-03 09:46:17.181363718 +0000
+--- a/libweston/backend-drm/drm-internal.h	2026-10-05 08:50:12.250406930 +0200
++++ b/libweston/backend-drm/drm-internal.h	2026-10-05 08:50:12.267074015 +0200
 @@ -592,6 +592,10 @@
  	 * framebuffers in every drm_plane_state of the output state that we've
  	 * used to request the writeback job */
@@ -31,8 +31,8 @@ diff -ruN a/libweston/backend-drm/drm-internal.h b/libweston/backend-drm/drm-int
  drm_output_destroy(struct weston_output *output_base);
  void
 diff -ruN a/libweston/backend-drm/drm.c b/libweston/backend-drm/drm.c
---- a/libweston/backend-drm/drm.c	2026-10-03 09:15:12.909548909 +0000
-+++ b/libweston/backend-drm/drm.c	2026-10-03 10:04:37.161679893 +0000
+--- a/libweston/backend-drm/drm.c	2026-10-05 08:50:12.250406930 +0200
++++ b/libweston/backend-drm/drm.c	2026-10-05 08:51:04.358318984 +0200
 @@ -68,6 +68,8 @@
  #include "linux-dmabuf.h"
  #include "linux-dmabuf-unstable-v1-server-protocol.h"
@@ -50,7 +50,7 @@ diff -ruN a/libweston/backend-drm/drm.c b/libweston/backend-drm/drm.c
  	wl_array_init(&state->referenced_fbs);
  
  	return state;
-@@ -539,6 +542,538 @@
+@@ -539,6 +542,568 @@
  	free(state);
  }
  
@@ -321,6 +321,31 @@ diff -ruN a/libweston/backend-drm/drm.c b/libweston/backend-drm/drm.c
 +	return 0;
 +}
 +
++/* La sortie va disparaître (écran débranché, sortie désactivée) : on l'OUBLIE,
++ * et le minuteur s'arrête. Sans ça (05/10, mesuré sur la box : Weston tué par un
++ * SIGSEGV au premier débranchement HDMI), pxl.output gardait l'adresse d'une
++ * sortie LIBÉRÉE par drm_output_destroy() et le minuteur, toutes les 1000/fps ms,
++ * demandait de la redessiner : selon ce que la mémoire libérée contenait, ça
++ * passait ou ça plantait. Le flux repartait quand Weston recréait la sortie à la
++ * même adresse — par hasard. Une case en vol est rendue : sa sortie ne la rendra
++ * jamais (le CRTC est éteint par drm_output_deinit(), le writeback avec lui). */
++static void
++pxl_wb_output_gone(struct drm_output *output)
++{
++	if (!pxl.output || pxl.output != output)
++		return;
++	if (output->wb_state && output->wb_state->pxl_slot >= 0 &&
++	    output->wb_state->pxl_slot < PXL_WB_N)
++		pxl.busy[output->wb_state->pxl_slot] = false;
++	pxl.output = NULL;
++	pxl.attached = false;	/* le connecteur writeback sera ré-attaché à la sortie suivante */
++	pxl.paire = 0;
++	pxl.seq2 = 0;
++	if (pxl.timer)
++		wl_event_source_timer_update(pxl.timer, 0);
++	weston_log("pxl-wb: sortie %s retirée — flux suspendu jusqu'à son retour\n", output->base.name);
++}
++
 +static void
 +pxl_wb_init(struct drm_output *output)
 +{
@@ -399,6 +424,11 @@ diff -ruN a/libweston/backend-drm/drm.c b/libweston/backend-drm/drm.c
 +		return;
 +	if (pxl.output && pxl.output != output)
 +		return;	/* une seule sortie : la première */
++	if (!pxl.output) {	/* retour après pxl_wb_output_gone() : le minuteur reprend */
++		weston_log("pxl-wb: sortie %s de retour — flux repris\n", output->base.name);
++		if (pxl.timer)
++			wl_event_source_timer_update(pxl.timer, 1000 / pxl.fps);
++	}
 +	pxl.output = output;
 +	now = pxl_now_ns();
 +	/* -4 ms : une image d'avance tolérée sur la grille, sinon un écran à
@@ -589,7 +619,7 @@ diff -ruN a/libweston/backend-drm/drm.c b/libweston/backend-drm/drm.c
  static void
  drm_output_pick_writeback_capture_task(struct drm_output *output)
  {
-@@ -715,8 +1250,10 @@
+@@ -715,8 +1280,10 @@
  	if (drm_output_ensure_hdr_output_metadata_blob(output) < 0)
  		goto err;
  
@@ -601,7 +631,25 @@ diff -ruN a/libweston/backend-drm/drm.c b/libweston/backend-drm/drm.c
  
  	drm_output_render(state, damage);
  	scanout_state = drm_output_state_get_plane(state,
-@@ -2816,6 +3353,10 @@
+@@ -2284,6 +2851,8 @@
+ 	struct drm_device *device = b->drm;
+ 	struct drm_pending_state *pending;
+ 
++	pxl_wb_output_gone(output);	/* PXL : le flux oublie cette sortie AVANT qu'elle s'éteigne */
++
+ 	if (!b->compositor->shutting_down) {
+ 		pending = drm_pending_state_alloc(device);
+ 		drm_output_get_disable_state(pending, output);
+@@ -2332,6 +2901,8 @@
+ 
+ 	drm_output_set_cursor_view(output, NULL);
+ 
++	pxl_wb_output_gone(output);	/* PXL : même déjà désactivée, plus jamais visée par le minuteur */
++
+ 	if (output->base.enabled)
+ 		drm_output_deinit(&output->base);
+ 
+@@ -2816,6 +3387,10 @@
  {
  	struct drm_output *output = state->output;
  
@@ -612,7 +660,7 @@ diff -ruN a/libweston/backend-drm/drm.c b/libweston/backend-drm/drm.c
  	weston_capture_task_retire_failed(state->ct, err_msg);
  	drm_writeback_state_free(state);
  	output->wb_state = NULL;
-@@ -2868,6 +3409,14 @@
+@@ -2868,6 +3443,14 @@
  	if (state->state == DRM_OUTPUT_WB_SCREENSHOT_WAITING_SIGNAL)
  		return true;
  
@@ -628,8 +676,8 @@ diff -ruN a/libweston/backend-drm/drm.c b/libweston/backend-drm/drm.c
  		if (drm_writeback_has_finished(state))
  			return false;
 diff -ruN a/libweston/backend-drm/kms.c b/libweston/backend-drm/kms.c
---- a/libweston/backend-drm/kms.c	2026-10-03 09:15:12.909478813 +0000
-+++ b/libweston/backend-drm/kms.c	2026-10-03 09:46:17.182315863 +0000
+--- a/libweston/backend-drm/kms.c	2026-10-05 08:50:12.250406930 +0200
++++ b/libweston/backend-drm/kms.c	2026-10-05 08:50:12.273740849 +0200
 @@ -1169,7 +1169,10 @@
  		*flags |= DRM_MODE_ATOMIC_ALLOW_MODESET;
  	}
@@ -676,8 +724,8 @@ diff -ruN a/libweston/backend-drm/kms.c b/libweston/backend-drm/kms.c
  	drm_debug(b, "[atomic][CRTC:%u] flip processing completed\n", crtc_id);
  }
 diff -ruN a/libweston/backend-drm/modes.c b/libweston/backend-drm/modes.c
---- a/libweston/backend-drm/modes.c	2026-10-03 09:15:12.909412165 +0000
-+++ b/libweston/backend-drm/modes.c	2026-10-03 09:46:17.181877518 +0000
+--- a/libweston/backend-drm/modes.c	2026-10-05 08:50:12.250406930 +0200
++++ b/libweston/backend-drm/modes.c	2026-10-05 08:50:12.273740849 +0200
 @@ -438,7 +438,10 @@
  	refresh = (info->clock * 1000000LL / info->htotal +
  		   info->vtotal / 2) / info->vtotal;
