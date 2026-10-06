@@ -12,7 +12,9 @@
 // et chaque valeur est vérifiée avant de partir (adresses, noms, SSID).
 //
 // Écritures sur la carte SD : seulement quand on ENREGISTRE un réglage (décision du 02/10/2026 : le minimum d'écritures).
-import { createServer } from 'node:http';
+import http, { createServer } from 'node:http';
+import https from 'node:https';
+import { isIP } from 'node:net';
 import { execFile } from 'node:child_process';
 import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync, renameSync, chmodSync, readdirSync, statSync, realpathSync, createReadStream } from 'node:fs';
 import { randomBytes, randomUUID, scryptSync, timingSafeEqual, createHmac, createHash } from 'node:crypto';
@@ -295,12 +297,84 @@ const WB_CODECS = ['h264', 'hevc'], WB_RCS = ['cbr', 'vbr'], WB_GOP_S = [0.5, 1,
 // Clé d'accès d'un relais qui en exige une : À PART de pxl-kiosk.conf (que tout le système lit), 0640 root:pxl — pxl-wb
 // tourne en pxl. Jamais renvoyée à la page : elle n'y apparaît que comme « définie ».
 const WB_CLE = '/etc/pxl-kiosk/wb.cle';
-const CLE_OK = /^[\x21-\x7e]{4,256}$/;
+// Clés (06/10, Eliott : « je dois pouvoir rentrer n'importe quelle clé, même de 1 caractère ») : 1 à 256 caractères.
+// · flux (relais d'un autre) : tout sauf les caractères de contrôle — elle vit dans son propre fichier et part encodée
+//   dans l'adresse (?key=), une espace ne gêne rien ;
+// · relais de la box : sans espace ni guillemet ni barre oblique inverse — elle est écrite telle quelle dans un fichier
+//   d'environnement systemd (/etc/default/pxl-relais), qui les interpréterait.
+const CLE_FLUX_OK = /^[^\x00-\x1f\x7f]{1,256}$/;
+const CLE_RELAIS_OK = /^[\x21\x23-\x26\x28-\x5b\x5d-\x7e]{1,256}$/;
+// Adresse du relais : ws:// et wss://, et aussi http:// / https:// (ce qu'on copie d'un navigateur), convertis — le
+// client parle WebSocket. Un chemin après l'hôte est gardé (relais derrière un proxy).
+function adresseRelais(brute) {
+  const u = String(brute || '').trim().replace(/\/+$/, '').replace(/^http(s?):\/\//i, (_, s) => `ws${s}://`);
+  exiger(/^wss?:\/\/[^\s"'`$\\]+$/i.test(u), 'adresse du relais invalide (ws://, wss://, http:// ou https://hôte[:port])');
+  let h = ''; try { h = new URL(u).hostname; } catch { /* rattrapé ci-dessous */ }
+  exiger(h, 'adresse du relais invalide (hôte illisible)');
+  return u;
+}
+// Une ligne du journal pour la page : jamais la clé (thq-publish la masque depuis le 06/10, mais un client plus ancien
+// l'écrivait dans « open »).
+const sansCle = l => l.replace(/([?&]key=)[^&"\s]*/g, '$1***');
+async function journalWb(n) {
+  const j = await run('journalctl', ['-u', 'pxl-wb', '-n', String(n), '--no-pager', '-o', 'short-iso']);
+  return j.out.split('\n').filter(l => /pxl-wb-enc :|thq|pxl-wb :/.test(l)).map(sansCle);
+}
+// Sonde du relais distant : la poignée de main WebSocket qu'ouvrirait le flux, faite à la main pour LIRE la réponse —
+// le WebSocket de Node ne rend qu'« error » sans le code HTTP (401 = clé refusée, 404…). Sur un canal à part
+// (<canal>.sonde) : jamais sur le vrai, où une connexion acceptée pourrait reprendre une source muette. Fermée dès la
+// réponse, aucune trame envoyée. Gardée 15 s : la page interroge toutes les 3 s.
+let sondeCache = { cle: '', a: 0, r: null };
+async function sonderRelais(url, canal) {
+  const cle = lire(WB_CLE) || '', id = url + '|' + canal + '|' + createHash('sha256').update(cle).digest('hex');
+  if (sondeCache.cle === id && Date.now() - sondeCache.a < 15e3) return sondeCache.r;
+  const r = await new Promise(res => {
+    let u; try { u = new URL(url.replace(/^ws/i, 'http')); } catch { return res({ ok: false, cause: 'adresse illisible' }); }
+    const chemin = `${u.pathname.replace(/\/+$/, '')}/api/turbohq/${encodeURIComponent(canal + '.sonde')}?role=publisher${cle ? '&key=' + encodeURIComponent(cle) : ''}`;
+    const mod = u.protocol === 'https:' ? https : http;
+    const req = mod.request({ host: u.hostname, port: u.port || (u.protocol === 'https:' ? 443 : 80), path: chemin, method: 'GET', timeout: 5000,
+      servername: isIP(u.hostname) ? undefined : u.hostname, headers: { Connection: 'Upgrade', Upgrade: 'websocket', 'Sec-WebSocket-Version': '13',
+        'Sec-WebSocket-Key': randomBytes(16).toString('base64'), Host: u.host } });
+    const fin = x => { try { req.destroy(); } catch { /* déjà fermée */ } res(x); };
+    req.on('upgrade', (rep, sock) => { sock.destroy(); fin({ ok: true, http: 101, cause: 'le relais accepte la connexion et la clé' }); });
+    req.on('response', rep => { rep.resume(); const c = rep.statusCode;
+      fin({ ok: false, http: c, cause: c === 401 ? 'clé refusée par le relais (401) — absente ou fausse'
+        : c === 404 ? 'adresse trouvée mais ce n\'est pas un relais TurboHQ (404) — vérifier le chemin'
+        : c >= 300 && c < 400 ? `le relais redirige (${c}) — vérifier ws:// / wss:// et le port`
+        : `le relais répond ${c}` }); });
+    req.on('timeout', () => fin({ ok: false, cause: 'pas de réponse en 5 s (pare-feu, port, relais arrêté ?)' }));
+    req.on('error', e => fin({ ok: false, cause: e.code === 'ENOTFOUND' || e.code === 'EAI_AGAIN' ? `nom introuvable (${u.hostname})`
+      : e.code === 'ECONNREFUSED' ? 'connexion refusée — rien n\'écoute sur ce port'
+      : e.code === 'ECONNRESET' ? 'connexion coupée par le relais ou un pare-feu'
+      : /CERT_NOT_YET_VALID|CERT_HAS_EXPIRED/.test(e.code || '') ? `certificat refusé (${e.code}) — l'heure de la box est-elle juste ?`
+      : /CERT|SSL|TLS/i.test(e.code || e.message) ? `certificat refusé (${e.code || e.message})`
+      : e.code === 'EPROTO' ? 'protocole refusé — wss:// vers un port non chiffré ?' : (e.code || e.message) }));
+    req.end();
+  });
+  sondeCache = { cle: id, a: Date.now(), r };
+  return r;
+}
+// Le voyant : gris (coupé) · orange (connexion en cours / connecté sans rien envoyer) · vert (envoie) · rouge (refusé),
+// lu dans le journal de thq-publish : ses « stat » toutes les 5 s (compteur `sent`), « open », « reconnecting ».
+async function etatWb(c, act, lignes) {
+  if (c.WB_ACTIF !== '1') return { couleur: 'gris', texte: 'coupé' };
+  if (act !== 'active') return { couleur: 'rouge', texte: `service ${act || 'arrêté'}` };
+  const ev = lignes.map(l => { const m = l.match(/\[thq\] (\{.*\})\s*$/); try { return m && JSON.parse(m[1]); } catch { return null; } }).filter(Boolean);
+  const stats = ev.filter(e => e.event === 'stat'), co = ev.filter(e => ['open', 'reconnecting'].includes(e.event));
+  const s1 = stats.at(-1), s0 = stats.at(-2), dernier = co.at(-1);
+  if (s1 && s0 && s1.sent > s0.sent) return { couleur: 'vert', texte: `connecté — envoie (${s1.sent - s0.sent} images en 5 s)` };
+  if (dernier?.event === 'reconnecting') {
+    if (dernier.code === 4409) return { couleur: 'rouge', texte: 'canal occupé : une autre source publie déjà sous ce nom' };
+    const url = c.WB_URL || 'ws://127.0.0.1:8080', s = await sonderRelais(url, c.WB_CANAL || 'pxlnode');
+    return { couleur: s.ok ? 'orange' : 'rouge', texte: s.ok ? `reconnexion (${s.cause})` : s.cause, http: s.http || null };
+  }
+  if (dernier?.event === 'open') return { couleur: 'orange', texte: 'connecté — rien n\'est encore envoyé' };
+  return { couleur: 'orange', texte: 'connexion en cours…' };
+}
 async function wb() {
   const c = lireConf();
   const act = (await run('systemctl', ['is-active', 'pxl-wb'])).out.trim();
-  const j = await run('journalctl', ['-u', 'pxl-wb', '-n', '40', '--no-pager', '-o', 'cat']);
-  const lignes = j.out.split('\n').filter(l => /pxl-wb-enc :|thq|pxl-wb :/.test(l));
+  const lignes = await journalWb(40);
   const stats = [...lignes].reverse().find(l => /img\/s ·/.test(l)) || null;
   const patche = !!lire('/etc/pxl-kiosk/weston-pxl');
   const client = existsSync('/usr/local/lib/pxl-kiosk/turbohq-client/bin/thq-publish.js');
@@ -308,12 +382,20 @@ async function wb() {
     fps: c.WB_FPS === 'auto' ? 'auto' : +(c.WB_FPS || 25), debit: +(c.WB_DEBIT || 6000), service: act,
     codec: WB_CODECS.includes(c.WB_CODEC) ? c.WB_CODEC : 'h264', rc: WB_RCS.includes(c.WB_RC) ? c.WB_RC : 'cbr',
     gopS: +(c.WB_GOP_S || (c.WB_GOP && +c.WB_FPS ? +c.WB_GOP / +c.WB_FPS : 1)), codecs: WB_CODECS, rcs: WB_RCS, gopsS: WB_GOP_S, stats, derniere: lignes.slice(-1)[0] || null,
-    patche, client, fpsPossibles: WB_FPS, cle: !!lire(WB_CLE) };
+    patche, client, fpsPossibles: WB_FPS, cle: !!lire(WB_CLE), etat: await etatWb(c, act, await journalWb(200)) };
+}
+// La petite fenêtre de log de /admin › Flux TurboHQ (rafraîchie toutes les 3 s) : voyant + 30 dernières lignes.
+async function wbJournal() {
+  const c = lireConf(), act = (await run('systemctl', ['is-active', 'pxl-wb'])).out.trim();
+  const lignes = await journalWb(200);
+  return { etat: await etatWb(c, act, lignes), lignes: lignes.slice(-30) };
 }
 async function regleWb(q) {
   const actif = q.actif === '1' || q.actif === true || q.actif === 'true';
-  const url = String(q.url || '').trim(), canal = String(q.canal || '').trim();
-  exiger(/^wss?:\/\/[^\s"'`$\\]+$/.test(url), 'adresse du relais invalide (ws://hôte:port)');
+  const url = adresseRelais(q.url), canal = String(q.canal || '').trim();
+  // TOUT se vérifie AVANT d'écrire (06/10) : une clé refusée après l'écriture de l'adresse laissait un réglage à moitié
+  // posé — nouvelle adresse, ANCIENNE clé — et le relais répondait 401 sans que la page le dise.
+  if (q.cleEffacer !== '1' && q.cle) exiger(CLE_FLUX_OK.test(q.cle), 'clé d\'accès invalide (1 à 256 caractères, sans caractère de contrôle)');
   exiger(/^[A-Za-z0-9_.-]{1,40}$/.test(canal), 'nom de canal invalide (lettres, chiffres, - _ .)');
   const fps = q.fps === 'auto' ? 'auto' : +q.fps, debit = Math.round(+q.debit);
   exiger(WB_FPS.includes(fps), 'cadence invalide'); exiger(debit >= 500 && debit <= 20000, 'débit entre 500 et 20000 kbit/s');
@@ -337,7 +419,6 @@ async function regleWb(q) {
   ecrireAtomique(CONF, t);
   if (q.cleEffacer === '1') { try { unlinkSync(WB_CLE); } catch { /* déjà absente */ } }
   else if (q.cle) {
-    exiger(CLE_OK.test(q.cle), 'clé d\'accès invalide (4 à 256 caractères imprimables, sans espace)');
     writeFileSync(WB_CLE + '.part', q.cle, { mode: 0o640 }); chmodSync(WB_CLE + '.part', 0o640);
     await run('chown', ['root:pxl', WB_CLE + '.part']); renameSync(WB_CLE + '.part', WB_CLE);
   }
@@ -405,7 +486,7 @@ async function regleRelais(q) {
   let t = lire(RELAIS_DEF) ?? '# Relais TurboHQ de la box — réglé par /admin';
   t = poserLigne(t, 'PXL_THQ_NAME', nom);
   if (q.cleEffacer === '1') t = oterLigne(t, 'PXL_THQ_KEY');
-  else if (q.cle) { exiger(CLE_OK.test(q.cle), 'clé d\'accès invalide (4 à 256 caractères imprimables, sans espace)'); t = poserLigne(t, 'PXL_THQ_KEY', q.cle); }
+  else if (q.cle) { exiger(CLE_RELAIS_OK.test(q.cle), 'clé d\'accès invalide (1 à 256 caractères, sans espace, guillemet ni \\)'); t = poserLigne(t, 'PXL_THQ_KEY', q.cle); }
   writeFileSync(RELAIS_DEF + '.part', t.replace(/\n?$/, '\n'), { mode: 0o600 }); chmodSync(RELAIS_DEF + '.part', 0o600);
   renameSync(RELAIS_DEF + '.part', RELAIS_DEF);
   const r = actif ? await run('systemctl', ['enable', '--now', 'pxl-relais']).then(x => x.ok ? run('systemctl', ['restart', 'pxl-relais']) : x)
@@ -748,6 +829,7 @@ async function api(req, u, q) {
     return { texte: pxlnet(r.out || r.err) };
   }
   if (p === '/api/maj') return enRefus(maj.etat());
+  if (p === '/api/wb/journal') return wbJournal();
   if (req.method !== 'POST') throw new Refus('méthode');
   try { return await actionPost(p, q); }
   // tout réglage est gravé aussitôt : la carte SD est en commit=600, une coupure de courant effacerait 10 min de réglages

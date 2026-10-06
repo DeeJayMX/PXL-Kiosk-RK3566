@@ -35,6 +35,14 @@
   .case small { display: block; color: var(--doux); font-size: 13px; }
   .case b { display: block; font-weight: 600; overflow-wrap: anywhere; }
   .ok { color: var(--vert); } .ko { color: var(--rouge); } .moyen { color: var(--orange); }
+  /* voyant de connexion du flux TurboHQ (06/10) : gris coupé · orange en cours · vert envoie · rouge refusé */
+  .voyant-wb { display: flex; align-items: center; gap: 10px; margin-top: 12px; font-weight: 600; }
+  .voyant { width: 14px; height: 14px; border-radius: 50%; flex: none; background: #5d6875; }
+  .voyant.vert { background: var(--vert); box-shadow: 0 0 8px var(--vert); } .voyant.rouge { background: var(--rouge); box-shadow: 0 0 8px var(--rouge); }
+  .voyant.orange { background: var(--orange); animation: clignote 1s steps(2, jump-none) infinite; }
+  @keyframes clignote { 50% { opacity: .35; } }
+  @media (prefers-reduced-motion: reduce) { .voyant.orange { animation: none; } }
+  #wb-log { max-height: 220px; margin-top: 8px; font-size: 11.5px; }
   label { display: block; margin: 10px 0 4px; color: var(--doux); font-size: 14px; }
   input, select, textarea { width: 100%; padding: 10px 12px; font: inherit; color: var(--texte); background: var(--fond);
     border: 1px solid var(--trait); border-radius: 8px; }
@@ -203,7 +211,8 @@
           le flux apparaît sur le relais : les spectateurs le choisissent par ce nom.</span></span></label><input id="wb-canal" placeholder="SyntPVW"></div>
         <div><label>Relais de destination <span class="aide" tabindex="0">❔<span class="aide-texte"><b>Local</b> : le
           relais de cette box (<code>ws://127.0.0.1:8080</code>), regardé sur <code>http://&lt;box&gt;:8080</code>.<br>
-          <b>Personnalisé</b> : le relais d'une autre machine, <code>ws://&lt;adresse&gt;:8080</code>. « Chercher » ne voit
+          <b>Personnalisé</b> : le relais d'une autre machine — <code>ws://&lt;adresse&gt;:8080</code>, ou en chiffré
+          <code>wss://&lt;nom&gt;</code> (une adresse <code>https://</code> copiée d'un navigateur est convertie). « Chercher » ne voit
           le réseau local par annonce — un Wi-Fi qui ne les relaie pas ou PXLnet (100.x) les bloquent —, mais elle
           interroge aussi <b>directement</b> les relais déjà choisis ici (les 8 derniers) : saisis une fois, on les
           retrouve partout.</span></span></label>
@@ -213,9 +222,9 @@
           </div></div>
       </div>
       <div class="ligne" id="wb-perso">
-        <div><label for="wb-url">Adresse du relais</label><input id="wb-url" placeholder="ws://192.168.1.155:8080"></div>
+        <div><label for="wb-url">Adresse du relais</label><input id="wb-url" placeholder="ws://192.168.1.155:8080 ou wss://thq.pxl.re"></div>
         <div><label for="wb-cle">Clé d'accès <span class="aide" tabindex="0">❔<span class="aide-texte">Seulement si ce
-          relais en exige une. Jamais réaffichée : laisser vide pour garder celle qui est enregistrée.</span></span></label>
+          relais en exige une, de 1 à 256 caractères. Jamais réaffichée : laisser vide pour garder celle qui est enregistrée.</span></span></label>
           <input id="wb-cle" type="password" autocomplete="new-password">
           <label><input type="checkbox" id="wb-cle-effacer" style="width:auto"> retirer la clé</label></div>
       </div>
@@ -242,6 +251,8 @@
       <div class="actions"><button class="principal" type="submit">Appliquer</button></div>
     </form>
     <div id="wb-etat" class="note"></div>
+    <div class="voyant-wb"><span id="wb-voyant" class="voyant" role="img" aria-label="état de la connexion"></span><span id="wb-voyant-texte">—</span></div>
+    <pre id="wb-log" aria-label="Journal du flux (30 dernières lignes)">…</pre>
   </section>
 
   <section data-onglet="flux">
@@ -519,6 +530,7 @@ function rendre() {
   // Flux TurboHQ
   const fx = E.wb;
   if (fx) {
+    voyantWb(fx.etat);
     if (!$('#f-wb').dataset.touche) {
       const local = /^wss?:\/\/(127\.0\.0\.1|localhost)(:|\/|$)/.test(fx.url);
       $$('input[name="wb-dest"]').forEach(r => { r.checked = r.value === (local ? 'local' : 'perso'); });
@@ -901,6 +913,25 @@ $('#f-mdp').addEventListener('submit', ev => {
     $('#mdp-ancien').value = ''; $('#mdp-nouveau').value = ''; }, 'mot de passe changé');
 });
 setInterval(() => { if (E && !document.hidden && !document.querySelector('button:disabled')) charger(); }, 15000);
+// Flux TurboHQ : voyant + 30 dernières lignes du journal, toutes les 3 s tant que l'onglet est affiché (06/10).
+// Une ligne de journal : « 2026-10-06T14:18:00+02:00 PXLnode pxl-wb.sh[42710]: … » → « 14:18:00 … ».
+const ligneWb = l => l.replace(/^\S*T(\d\d:\d\d:\d\d)\S*\s+\S+\s+[^:]+:\s*/, '$1 ');
+function voyantWb(e) {
+  if (!e) return;
+  $('#wb-voyant').className = 'voyant ' + (e.couleur || '');
+  $('#wb-voyant').setAttribute('aria-label', e.couleur || 'inconnu');
+  $('#wb-voyant-texte').textContent = e.texte || '—';
+}
+async function journalFlux() {
+  if (document.hidden || document.querySelector('main')?.dataset.onglet !== 'flux' || $('#appli').classList.contains('cache')) return;
+  try {
+    const j = await appel('/api/wb/journal'), log = $('#wb-log'), enBas = log.scrollTop + log.clientHeight >= log.scrollHeight - 8;
+    voyantWb(j.etat);
+    log.textContent = (j.lignes || []).map(ligneWb).join('\n') || 'journal vide';
+    if (enBas) log.scrollTop = log.scrollHeight;
+  } catch { /* connexion perdue : le rafraîchissement général le dira */ }
+}
+setInterval(journalFlux, 3000);
 charger().then(() => { if (E) chargerMaj(); });
 
 // ---- onglets
@@ -908,7 +939,7 @@ charger().then(() => { if (E) chargerMaj(); });
   const ONGLETS = ['etat', 'habillage', 'ecran', 'flux', 'companion', 'reseau', 'systeme'];
   const choisir = o => {
     if (!ONGLETS.includes(o)) o = 'etat';
-    document.querySelector('main').dataset.onglet = o;
+    document.querySelector('main').dataset.onglet = o; if (o === 'flux') journalFlux();
     for (const b of document.querySelectorAll('#onglets button')) b.classList.toggle('actif', b.dataset.o === o);
     try { localStorage.setItem('pxl-admin-onglet', o); } catch {}
     if (location.hash.slice(1) !== o) history.replaceState(null, '', '#' + o);

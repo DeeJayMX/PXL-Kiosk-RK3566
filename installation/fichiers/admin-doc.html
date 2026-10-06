@@ -110,20 +110,30 @@
       <tr><th>Réglage</th><th>Ce qu'il fait</th></tr>
       <tr><td>Publier</td><td>Active ou coupe le flux.</td></tr>
       <tr><td>Nom du canal</td><td>Le nom sous lequel les spectateurs choisissent le flux sur le relais.</td></tr>
-      <tr><td>Relais de destination</td><td>Local = le relais de cette box (<code>ws://127.0.0.1:8080</code>). Personnalisé = une autre machine, <code>ws://&lt;adresse&gt;:8080</code>. « Chercher les relais du réseau » liste ceux qui s'annoncent, plus les 8 derniers choisis.</td></tr>
-      <tr><td>Clé d'accès</td><td>Seulement si le relais visé en exige une. Jamais réaffichée ; vide = garder l'actuelle ; « retirer la clé » l'efface.</td></tr>
+      <tr><td>Relais de destination</td><td>Local = le relais de cette box (<code>ws://127.0.0.1:8080</code>). Personnalisé = une autre machine : <code>ws://&lt;adresse&gt;:8080</code>, ou chiffré <code>wss://&lt;nom&gt;</code> ; une adresse <code>http://</code> / <code>https://</code> est convertie en <code>ws://</code> / <code>wss://</code>, un chemin après l'hôte est gardé. « Chercher les relais du réseau » liste ceux qui s'annoncent, plus les 8 derniers choisis.</td></tr>
+      <tr><td>Clé d'accès</td><td>Seulement si le relais visé en exige une : 1 à 256 caractères, espaces compris. Jamais réaffichée ; vide = garder l'actuelle ; « retirer la clé » l'efface.</td></tr>
       <tr><td>Codec</td><td>H.264 : lu partout. H.265 : 30 à 40 % de débit en moins, mais le spectateur doit savoir le décoder.</td></tr>
       <tr><td>Cadence</td><td>AUTO (celle de la sortie HDMI) · 24 · 25 · 30 · 50 · 60 img/s.</td></tr>
       <tr><td>Débit</td><td>500 à 20 000 kbit/s.</td></tr>
       <tr><td>Mode de débit</td><td>CBR : constant (±6 %), pour un lien tendu. VBR : moyenne visée, pointes ×1,5.</td></tr>
       <tr><td>GOP</td><td>Image clé toutes les 0,5 · 1 · 2 · 4 s. Plus long = moins de débit perdu, mais arrivée et reprise plus lentes.</td></tr>
     </table></div>
+    <h3>Voyant et journal du flux</h3>
+    <p>Sous le formulaire, un voyant dit où en est la connexion au relais, et une fenêtre montre les 30 dernières lignes du journal du flux (clé masquée), rafraîchies toutes les 3 s tant que l'onglet est affiché.</p>
+    <div class="tableau"><table>
+      <tr><th>Voyant</th><th>Ce qu'il veut dire</th></tr>
+      <tr><td>Gris</td><td>Flux coupé.</td></tr>
+      <tr><td>Orange (clignote)</td><td>Connexion en cours, ou connecté sans encore rien envoyer.</td></tr>
+      <tr><td>Vert</td><td>Connecté, les images partent (nombre envoyé sur les 5 dernières secondes).</td></tr>
+      <tr><td>Rouge</td><td>Refusé, avec la cause en clair : clé refusée (401), nom introuvable, connexion refusée, pas de réponse, certificat refusé, canal occupé par une autre source, service arrêté…</td></tr>
+    </table></div>
+    <p class="note">Pour trouver la cause, l'admin refait lui-même la poignée de main vers le relais (sur un canal de test, jamais le vrai) et lit sa réponse : le client de publication, lui, ne voit qu'une « erreur ».</p>
     <h3>Relais TurboHQ local</h3>
     <div class="tableau"><table>
       <tr><th>Réglage</th><th>Ce qu'il fait</th></tr>
       <tr><td>Relais en service</td><td>Relais sur le port 8080, annoncé sur le réseau ; viewers sur <code>http://&lt;box&gt;:8080</code> et en HTTPS sur l'adresse PXLnet.</td></tr>
       <tr><td>Nom annoncé</td><td>Le nom vu par les autres machines dans leur recherche.</td></tr>
-      <tr><td>Clé d'accès</td><td>Optionnelle. Avec une clé, publishers et spectateurs la donnent (<code>?key=</code>), flux de la box compris. Indispensable si le relais est exposé sur Internet.</td></tr>
+      <tr><td>Clé d'accès</td><td>Optionnelle, 1 à 256 caractères sans espace, guillemet ni <code>\</code>. Avec une clé, publishers et spectateurs la donnent (<code>?key=</code>), flux de la box compris. Indispensable si le relais est exposé sur Internet.</td></tr>
     </table></div>
     <p>Le tableau dessous liste les canaux en cours : source et nombre de spectateurs. Appliquer relance le relais : les flux coupent quelques secondes.</p>
   </section>

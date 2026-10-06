@@ -290,4 +290,22 @@ Voir `README.md` pour la recette et `docs/README.md` pour l'index du dossier.
   l'en-tête de /admin (nouvel onglet). Chaque onglet, chaque réglage et ce qu'il fait, rédigé d'après `admin.html` / `admin.mjs`
   — à tenir à jour avec eux. Pendant côté habillage : `/doc-habillage` (app v1.36.0). ⚠ `admin.html` n'a reçu qu'un lien et son
   CSS ; `node --check` de son script passé, page non rendue avec l'état réel (pas de box joignable à ce moment-là).
+- 🔴 **Flux TurboHQ vers un relais distant : « wss ne passe pas » — c'était LA CLÉ** (06/10, v1.25.1, box chez le client, en
+  lecture seule). **Mesuré depuis la box** : `https://thq.pxl.re` 200, un `wss://` en spectateur s'ouvre, mais en publisher
+  **401 sans clé ET avec la clé de la box** (4 car., posée le jour même). Le journal ne disait que `reconnecting, cause:
+  error` toutes les 10 s : le WebSocket de Node ne rend pas le code HTTP. Deux défauts de /admin : *(1)* la clé exigeait 4 à
+  256 caractères sans espace (Eliott : « n'importe quelle clé, même de 1 caractère ») ; *(2)* 🔴 `regleWb()` écrivait
+  l'adresse dans `pxl-kiosk.conf` PUIS validait la clé — une clé refusée laissait **nouvelle adresse + ancienne clé**.
+  Correctifs : clé du flux 1-256 sans caractère de contrôle (`CLE_FLUX_OK`, elle vit dans son fichier et part encodée),
+  clé du relais de la box 1-256 sans espace / guillemet / `\` (`CLE_RELAIS_OK`, fichier d'environnement systemd) ; tout
+  validé AVANT d'écrire ; adresse `http(s)://` convertie en `ws(s)://` (`adresseRelais`). ⭐ **Voyant** gris / orange / vert /
+  rouge + **journal** (30 lignes, clé masquée, `/api/wb/journal` toutes les 3 s, onglet Flux affiché) : vert = `sent` qui
+  monte entre deux `stat` ; rouge = cause lue par une **sonde** (`sonderRelais`) qui refait la poignée de main à la main
+  (`http(s).request` + `Upgrade`) sur `<canal>.sonde` — jamais le vrai canal (une connexion acceptée y reprendrait une
+  source muette, `PUB_STALE_MS`) —, gardée 15 s ; `4409` (canal occupé) lu directement dans le journal.
+  ✅ Banc local (relais `server_turbohq.mjs`, `PXL_THQ_KEY=x`, TLS auto-signé) : sans clé / mauvaise ⇒ « clé refusée (401) »,
+  `x` ⇒ 101, port fermé, nom inconnu, `wss://` vers un port en clair, certificat auto-signé ⇒ chacun sa cause ;
+  `thq-publish` en `wss://` avec la clé d'un caractère ⇒ `open`. Page rendue dans Chromium (réponses simulées, 0 erreur JS).
+  🎯 **Pas encore sur la box** (lecture seule, Eliott décide quand appliquer) ; il faudra aussi ressaisir la vraie clé du VPS.
+  Côté TurboHQ : `thq-publish` écrivait l'adresse AVEC `key=` dans l'événement `open` — masquée (`key=***`), PR sur `master`.
 
