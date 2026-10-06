@@ -21,6 +21,10 @@ Voir `README.md` pour la recette et `docs/README.md` pour l'index du dossier.
 - **RK3566 ≠ RK3568 ≠ RK3588.** Un fait lu sur une autre puce se marque comme tel. Le
   RK3588 (Mali-G610, Panthor, VDPU381) ne se transpose pas au G52.
 
+## 🔴 Règle d'Eliott (06/10) : jamais le nom du fichier de notes de Claude en vue
+Ni dans un message de commit (/admin › Mises à jour affiche le journal des commits), ni dans une page, une doc livrée, un
+rapport ou une réponse. Dire « notes du dépôt » ou décrire le changement.
+
 ## Règles de code
 
 - **Jamais de binaire versionné** : ni `.ko`, ni Xorg compilé, ni `.deb`, ni clip vidéo.
