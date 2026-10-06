@@ -308,4 +308,9 @@ Voir `README.md` pour la recette et `docs/README.md` pour l'index du dossier.
   `thq-publish` en `wss://` avec la clé d'un caractère ⇒ `open`. Page rendue dans Chromium (réponses simulées, 0 erreur JS).
   🎯 **Pas encore sur la box** (lecture seule, Eliott décide quand appliquer) ; il faudra aussi ressaisir la vraie clé du VPS.
   Côté TurboHQ : `thq-publish` écrivait l'adresse AVEC `key=` dans l'événement `open` — masquée (`key=***`), PR sur `master`.
+- ✅ **Appliqué sur la box le 06/10 à 15 h 05** (feu vert d'Eliott, box libre) : TurboHQ `51a1e84` (PR #4, clé masquée —
+  0 `key=` en clair dans le journal ensuite), recette **1.25.1** (installer.sh rejoué : 170 s, preview relancée), habillage
+  **1.36.0**. Mode Répétition gardé (le drop-in `/run` survit à `daemon-reload`). Logo + sponsors, à l'antenne avant, remis
+  par `/api/gfx/<id>/take` un par un. `/doc-habillage` et `:8791/doc` répondent 200. Le flux vers `wss://thq.pxl.re` reste
+  en échec tant que la vraie clé du VPS n'est pas ressaisie (ancienne clé de 4 car. toujours dans `wb.cle`).
 
