@@ -69,3 +69,38 @@ Un rapport isolé (forum Armbian, lu en extrait) dit que **Chromium 150 de séri
 mainline (noyau 7.1). La phrase plus haut (*« pas de décodage matériel dans Chromium par cette voie à court terme »*) reste
 écrite : c'est le raisonnement qui serait refait. Elle n'est plus qu'une **hypothèse à mesurer**. Détail et sources :
 `COMPARATIF_PLATEFORMES.md`.
+
+## ⭐ Ajout du 07/10 (nuit) — la carte : **Radxa ROCK 4D**, et ce que Radxa livre VRAIMENT pour le RK3576
+
+Demande d'Eliott : *« plonge Rock 4D »*. Pages Radxa (docs, dl) **bloquées** par le proxy ; ce qui suit vient des dépôts
+**GitHub de Radxa, lus directement** (clonés le 07/10), plus quelques extraits web marqués comme tels.
+
+**La carte (extraits : CNX, fiche brève, LinuxLinks, AliExpress)** — RK3576 (4 × A72 2,2 GHz + 4 × A53 2,0 GHz), Mali-G52
+MC3, NPU 6 TOPS ; LPDDR5 2 / 4 / 8 / 16 Go ; **1 × HDMI** (2.1 selon la fiche brève, 2.0 4Kp60 selon CNX — **à trancher**)
++ MIPI DSI ; **Ethernet Gigabit** (PoE en option) ; Wi-Fi 6 / BT 5.4 ; microSD + connecteur **eMMC** *ou* **UFS** (un seul
+des deux) ; format Raspberry Pi. Décodeur H.265/VP9/AV1 8Kp30 ou 4Kp120, H.264 4Kp60 ; **encodeur H.264/H.265 4Kp60**.
+Prix 2025 : 8 Go ≈ 58 $, 16 Go ≈ 100 $ (AliExpress, extrait). Support **mainline** depuis Linux 6.15 (extrait).
+
+**L'image officielle (lu : `radxa-build/rock-4d`)** — Radxa ne fournit plus **que** l'image « Debian Desktop » ; versions
+publiées `rsdk-r1` (stable), `rsdk-t1` / `t2` (tests). Base Debian **bookworm**.
+
+**Le dépôt de paquets (lu : `radxa-repo/rk3576-bookworm`, dernier commit 19/06/2026)** :
+- ✅ **Noyau VENDEUR** : `linux-rk2410` **6.1.84** (+ variante `-nocsf`) — la même famille de noyau que notre box.
+- ✅ **Pile Rockchip** (MPP, RGA, libmali, GStreamer…) via `rockchip-prebuilt` `0.4.2-linux-6.1-stan-rkr4` — qui
+  **reconditionne les paquets officiels du SDK Debian de Rockchip** (`gitlab.com/rk3588_linux/linux/debian`, sous-module
+  `linux-6.1-stan-rkr4`), publiés pour `rk3576-bookworm` (lu : `pkg.conf.linux-6.1-stan-rkr4`).
+- 🔴 **PAS de Chromium à décodage matériel** : le `chromium-x11_126.0.6478.126` du SDK Rockchip est **exclu de toutes
+  les publications** (`"Releases": []`) dans les trois configurations (rkr4, rkr5.1, 6.12). Seul `rockchip-chromium-x11-utils`
+  est publié. Le dépôt **RK3588** porte, lui, `chromium-x11 0.4.1-linux-6.1-stan-rkr1-5` — c'est celui qu'utilise notre
+  box (`README.md`).
+- ⭐ Une suite **trixie + noyau Rockchip 6.12** (`linux-6.12-stan-rkr1`) est préparée pour `rk3576-trixie`, `rk3566-trixie`
+  et `rk3588-trixie` (lu dans `pkg.conf.linux-6.12-stan-rkr1`) — dépôt `rk3576-trixie` non lisible sans authentification.
+
+**Ce que ça veut dire pour nous :**
+- Le **socle est bon** : noyau vendeur 6.1 + MPP/RGA/libmali officiels, la même recette que la box.
+- 🎯 **Le seul maillon manquant est Chromium.** *Déduit, à mesurer* : le Chromium Radxa du dépôt RK3588 (ou celui du PPA
+  amazingfate) parle à MPP par `libv4l-rkmpp`, qui ne dépend pas de la puce ; avec la `librockchip_mpp` du SDK RK3576
+  installée, il **devrait** décoder sur le RK3576. C'est la toute première chose à vérifier en recevant la carte.
+- Choix d'achat : **8 Go + module eMMC** (l'UFS est plus rapide mais exclusif ; l'eMMC est ce qu'on maîtrise).
+- À trancher en main : **HDMI 2.0 ou 2.1**, sortie **1080i50** via `pxl-mode`, dissipation (radiateur fourni ?), alimentation
+  (USB-C PD).
