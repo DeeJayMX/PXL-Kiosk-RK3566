@@ -24,6 +24,7 @@ dépôt. Ils sont laissés tels quels, pour ne pas réécrire un document daté.
 | [`recherche/openfyde_rk3566.md`](recherche/openfyde_rk3566.md) | openFyde / ChromiumOS sur RK3566 | web |
 | [`recherche/pile_libmali_x11_rk356x.md`](recherche/pile_libmali_x11_rk356x.md) | paquets SDK Rockchip, compatibilité libmali/kbase, OPP | web |
 | [`PISTE_RK3576.md`](PISTE_RK3576.md) | **piste v2** (07/10) : RK3576, où le trouver, support Linux, et le point qui décide — le décodage matériel dans Chromium ; à instruire après l'Urban Trail | lu + déduit |
+| [`COMPARATIF_PLATEFORMES.md`](COMPARATIF_PLATEFORMES.md) | **box v2** (07/10) : RK3566 · N100 · Raspberry Pi 5 · Amlogic · RK3588 · RK3576 sur les cinq critères (décodage Chromium, encodeur, 1080i50, Linux, format) ; proposition de banc | web (extraits) |
 
 **Réserve commune aux notes web** : la session qui les a produites passait par un proxy
 qui refusait beaucoup d'hôtes (forums Armbian et Radxa, CNX, Phoronix, freedesktop…). Ces

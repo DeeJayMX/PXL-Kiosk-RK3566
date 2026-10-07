@@ -62,3 +62,10 @@ Sources (extraits) : [CNX — feuille de route RK3576](https://www.cnx-software.
 [forum Armbian, H96 Max M9](https://forum.armbian.com/topic/40483-efforts-to-develop-firmware-for-h96-max-rk3576-tv-box-8g128g) ·
 [Collabora — décodeurs RK3588/RK3576 en amont](https://collabora.com/news-and-blog/news-and-events/rk3588-and-rk3576-video-decoders-support-merged-in-the-upstream-linux-kernel.html) ·
 [ophub, base des modèles](https://github.com/ophub/amlogic-s9xxx-armbian/blob/main/build-armbian/armbian-files/common-files/etc/model_database.conf) (lu directement).
+
+## ⚠️ Ajout du 07/10 (même jour) — la déduction sur Chromium et le V4L2 sans état est REMISE EN QUESTION
+
+Un rapport isolé (forum Armbian, lu en extrait) dit que **Chromium 150 de série décode en V4L2 sans état** sur RK3588
+mainline (noyau 7.1). La phrase plus haut (*« pas de décodage matériel dans Chromium par cette voie à court terme »*) reste
+écrite : c'est le raisonnement qui serait refait. Elle n'est plus qu'une **hypothèse à mesurer**. Détail et sources :
+`COMPARATIF_PLATEFORMES.md`.
