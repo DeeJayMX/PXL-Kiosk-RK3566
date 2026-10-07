@@ -70,3 +70,37 @@ Demande d'Eliott après une annonce de mini-PC **Ryzen 5 3500U** (Vega 8, DCN 1.
 - ⭐ **Conclusion qui dépasse ces deux machines** : sous Linux, **aucun mini-PC x86 récent** (Intel ≥ Gen 12, AMD avec
   DC) ne sort de 1080i. Le **1080i50 est un avantage propre au Rockchip** (VOP2 + notre `pxl-mode`, mesuré). Un client
   qui exige de l'entrelacé ⇒ Rockchip ; sinon un mini-PC x86 en progressif.
+
+## ✅ Ajout du 07/10 (nuit) — « et Amlogic, et toutes les autres puces ? » : relevé dans le noyau MAINLINE
+
+Lu dans **torvalds/linux** `7b63ef2` (07/10/2026), dossiers `drivers/gpu/drm` et `drivers/media`. ⚠️ Ce relevé dit ce que le
+**noyau standard** sait faire ; les noyaux **vendeur** (comme celui de notre box, 6.1 Rockchip) peuvent faire plus ou moins.
+« Autorisé dans le code » n'est pas « mesuré sur une sortie » : chaque ligne reste **à mesurer**.
+
+**Sortie entrelacée (HDMI)** — pilotes qui l'autorisent (`interlace_allowed`) :
+
+| Famille | Entrelacé HDMI | Preuve lue |
+|---|---|---|
+| **Amlogic** (meson : S905 / S905X / S905X2 / S905X3…) | ✅ **1080i50 et 1080i60 câblés en dur** | `meson_venc.c` : tables `1080i50` (VIC 20) et `1080i60` (VIC 5) ; `meson_encoder_hdmi.c` l. 403 |
+| **Rockchip** (VOP2, mainline aussi) | ✅ | `rockchip_drm_vop2.c` programme la 2e trame (l. 1732, 1867) ; HDMI dw-hdmi l. 2594 |
+| **Raspberry Pi** (vc4, Pi 4 / Pi 5) | ✅ autorisé | `vc4_hdmi.c` l. 587 |
+| **MediaTek** (HDMI v1 et v2) | ✅ | `mtk_hdmi_v2.c` l. 1438 ; cas 1080i 74,25 MHz dans `mtk_hdmi.c` |
+| **Allwinner** (dw-hdmi + TCON) | 🟡 le TCON gère l'entrelacé, à confirmer de bout en bout | `sun4i_tcon.c`, `sun8i_mixer.c` |
+| Samsung Exynos, NXP via dw-hdmi | 🟡 autorisé côté HDMI | `exynos_hdmi.c`, `dw-hdmi.c` |
+| **Intel** Gen ≥ 12 · **AMD** (DC) | 🔴 **interdit** | voir l'ajout précédent |
+
+**Encodeur vidéo matériel dans le noyau STANDARD** (V4L2, H.264 / HEVC) — présents : Xilinx (allegro-dvt), NXP i.MX8
+(amphion) et i.MX6 (coda), Chips&Media **wave5** (TI AM62A, StarFive JH7110…), **MediaTek**, Qualcomm (venus / iris),
+Samsung (s5p-mfc), ST. **Absents** : Rockchip (encodeur seulement par MPP, noyau vendeur — c'est notre cas), **Amlogic**,
+**Allwinner**, Raspberry Pi.
+
+**Lecture :**
+- 🎯 **Amlogic sort bien le 1080i50**, câblé en dur — mais **pas d'encodeur** dans le noyau standard (flux TurboHQ
+  impossible, sauf noyau vendeur) et **aucune source** sur le décodage dans Chromium. ⇒ éliminé pour le flux, pas pour
+  l'entrelacé.
+- 🎯 **MediaTek coche les trois cases dans le noyau standard** (entrelacé, encodeur, décodeur V4L2 hérité de ChromeOS).
+  Candidat sérieux à regarder : cartes **Genio** (MT8390 / MT8395). *Non chiffré, non mesuré, Chromium de bureau à vérifier.*
+- 🎯 **Raspberry Pi 4** (pas le 5) : entrelacé autorisé, encodeur H.264 matériel **dans le noyau de la fondation**
+  (pas le standard), Chromium de Raspberry Pi OS avec décodage matériel. Processeur faible. *À vérifier.*
+- ⇒ **Rockchip reste la seule voie prouvée**. Les deux pistes nouvelles à mettre au banc, si on élargit : **MediaTek
+  Genio**, puis **Raspberry Pi 4**.
