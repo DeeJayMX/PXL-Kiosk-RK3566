@@ -55,3 +55,18 @@ extrait** : la déduction n'est ni confirmée ni infirmée — elle devient une 
 7. [libv4l-rkmpp](https://github.com/JeffyCN/libv4l-rkmpp)
 8. [Collabora — décodeurs RK3588/RK3576 en amont](https://collabora.com/news-and-blog/news-and-events/rk3588-and-rk3576-video-decoders-support-merged-in-the-upstream-linux-kernel.html)
 9. [Forum Armbian — décodage dans le navigateur sur RK3588 mainline (Debian 13)](https://forum.armbian.com/topic/61497-guide-system-wide-in-browser-hw-video-decode-on-rk3588-mainline-debian-13-trixie-%E2%80%94-and-the-4k30-cma-gotcha-nobody-warns-you-about/)
+
+## ✅ Ajout du 07/10 (soir) — l'entrelacé LU DANS LE CODE du noyau, Intel ET AMD
+
+Demande d'Eliott après une annonce de mini-PC **Ryzen 5 3500U** (Vega 8, DCN 1.0). Lu dans **torvalds/linux** à `7b63ef2`
+(07/10/2026), plus seulement en extrait :
+
+- **AMD (`amdgpu`, Display Core) — aucun entrelacé, sur AUCUNE génération qui passe par DC** :
+  `amdgpu_dm_connector.c` pose `aconnector->base.interlace_allowed = false` à la création de chaque connecteur
+  (l. 3212), et `amdgpu_dm_connector_mode_valid()` **refuse** tout mode `DRM_MODE_FLAG_INTERLACE` (l. 2495). Un Ryzen
+  3500U, comme toute APU AMD récente, **ne sort pas de 1080i sous Linux**. ⇒ le Ryzen ne passe pas devant le N100.
+- **Intel (`i915`) — confirmé** : `intel_hdmi.c` n'autorise l'entrelacé que si `DISPLAY_VER(display) < 12` (l. 3151) ;
+  Alder Lake-N (N100) est en version 12 ⇒ **pas d'entrelacé**. L'extrait [3] est donc vérifié dans le code.
+- ⭐ **Conclusion qui dépasse ces deux machines** : sous Linux, **aucun mini-PC x86 récent** (Intel ≥ Gen 12, AMD avec
+  DC) ne sort de 1080i. Le **1080i50 est un avantage propre au Rockchip** (VOP2 + notre `pxl-mode`, mesuré). Un client
+  qui exige de l'entrelacé ⇒ Rockchip ; sinon un mini-PC x86 en progressif.
