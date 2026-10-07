@@ -124,3 +124,26 @@ du MODÈLE fait foi, pas celle de la puce.
 | Box TV Amlogic | souvent **100 Mb/s** malgré une puce gigabit | à vérifier modèle par modèle |
 
 Au banc : `iperf3` dans les deux sens vers une machine gigabit, pour chaque candidat.
+
+## Ajout du 07/10 (nuit) — QUOI ACHETER, en carte de développement (demande d'Eliott : « qu'on achète le bon matos »)
+
+Principe : **on n'achète en quantité qu'après un banc réussi** sur un exemplaire. Et le premier banc ne coûte rien :
+
+0. 🎯 **La Rock 5B (RK3588) du dépôt PXL-Switcher existe déjà** (« la carte est un ROCK 5B », décision du 17/08 dans ce
+   dépôt-là) : tout y a déjà été mesuré côté RGA / VOP2 / DDR, sous noyau Radxa vendeur 6.1. Et le Chromium de la box
+   actuelle **vient justement du dépôt Radxa RK3588** (`README.md`, « Chromium 126 Radxa, dépôt `rk3588-bookworm` »).
+   ⇒ **Premier banc : la page d'habillage + le viewer TurboHQ + le décodage dans Chromium sur cette carte**, avant tout achat.
+   ⚠️ Elle sert le mélangeur PXL Switch : à faire seulement avec l'accord d'Eliott, sans toucher à son installation.
+
+| Ordre | Carte | Puce | Pourquoi | Prix (extrait, date) | À vérifier avant achat |
+|---|---|---|---|---|---|
+| 1 | **Radxa ROCK 4D 8 Go** + module eMMC | RK3576 | même fabricant que les paquets Chromium/MPP qui marchent déjà ; Gigabit ; HDMI 2.1 ; noyau mainline **et** Radxa OS | ~58 $ (AliExpress, 2025) | Radxa OS à noyau **vendeur** disponible ? Chromium Radxa pour RK3576 ? |
+| 2 | **Radxa ROCK 5B+** 8-16 Go | RK3588 | la voie puissante ; 2 HDMI 2.1 + **entrée HDMI** ; 2,5 GbE ; recette la plus proche du connu | 90-119 $ (2024) | eMMC proposée ? (annoncée « plus tard » en 2024) |
+| 3 | **Radxa NIO 12L** 8 Go | MediaTek Genio 1200 | la piste MediaTek (entrelacé + encodeur + décodeur dans le noyau standard) ; **entrée HDMI** ; Gigabit ; Ubuntu certifié 5 ans | 119 $ (2024) | décodage matériel dans **Chromium** sous Ubuntu : AUCUNE source trouvée |
+| — | Mini-PC N100 (annonce) | Intel | la voie progressive facile, 3 HDMI | ~150-200 € | redémarrage au retour du courant, 3 HDMI natives |
+
+Rien de ce tableau n'est mesuré ; les prix sont des extraits datés. Sources : [Radxa ROCK 4D — doc](https://docs.radxa.com/en/rock4/rock4d) ·
+[CNX — ROCK 4D](https://www.cnx-software.com/2025/05/28/radxa-rock-4d-sbc-raspberry-pi-lookalike-powered-by-rockchip-rk3576-edge-ai-soc/) ·
+[CNX — ROCK 5B+](https://www.cnx-software.com/2024/07/27/radxa-rock-5b-plus-sbc-lpddr5-memory-emmc-flash-wifi-6-two-m-2-m-key-sockets-4g-lte-5g/) ·
+[CNX — NIO 12L](https://www.cnx-software.com/2024/04/11/radxa-nio-12l-low-profile-mediatek-genio-1200-sbc-ubuntu-certification-5-years-software-updates/) ·
+[RS Online — NIO 12L](https://uk.rs-online.com/web/p/rock-sbc-boards/2564701?gb=s)
