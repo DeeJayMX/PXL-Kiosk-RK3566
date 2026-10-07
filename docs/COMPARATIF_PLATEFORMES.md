@@ -104,3 +104,23 @@ Samsung (s5p-mfc), ST. **Absents** : Rockchip (encodeur seulement par MPP, noyau
   (pas le standard), Chromium de Raspberry Pi OS avec décodage matériel. Processeur faible. *À vérifier.*
 - ⇒ **Rockchip reste la seule voie prouvée**. Les deux pistes nouvelles à mettre au banc, si on élargit : **MediaTek
   Genio**, puis **Raspberry Pi 4**.
+
+## Ajout du 07/10 (nuit) — sixième critère : **Ethernet gigabit** (demande d'Eliott)
+
+Aujourd'hui le flux TurboHQ du programme fait ~1-3 Mb/s (mesuré, `pxl-wb-enc`) : le gigabit n'est pas un besoin du flux
+actuel, c'est une **marge** (flux All-Intra 80 Mb/s de TurboHQ, plusieurs flux, NDI, liens de régie chargés).
+⚠️ Le piège des box TV : la puce a un contrôleur gigabit, mais le fabricant soude souvent une **PHY 100 Mb/s** — la fiche
+du MODÈLE fait foi, pas celle de la puce.
+
+| Candidat | Ethernet | Provenance |
+|---|---|---|
+| X88 Pro 20 (RK3566, actuelle) | 1 Gb/s | lu : `model_database.conf` d'ophub (`1Gb-Nic`) — débit réel **non mesuré** |
+| NanoPi M5 (RK3576) | 2 × 1 Gb/s | lu : ophub |
+| reComputer RK3576 | 2,5 Gb/s | lu : ophub |
+| H96 Max M9 (RK3576) | 1 Gb/s | extrait : forum Armbian (varie selon les lots) |
+| Mini-PC N100 de l'annonce | 2 × 1 Gb/s (« double gig ») | annonce |
+| Mini-PC Ryzen 3500U de l'annonce | « double Ethernet », débit non précisé | annonce |
+| Raspberry Pi 4 / 5, cartes RK3588, MediaTek Genio | gigabit ou plus selon la carte | **à vérifier modèle par modèle** |
+| Box TV Amlogic | souvent **100 Mb/s** malgré une puce gigabit | à vérifier modèle par modèle |
+
+Au banc : `iperf3` dans les deux sens vers une machine gigabit, pour chaque candidat.
