@@ -23,6 +23,7 @@ dépôt. Ils sont laissés tels quels, pour ne pas réécrire un document daté.
 | [`recherche/retours_terrain_benchmarks.md`](recherche/retours_terrain_benchmarks.md) | mesures publiées sur RK356x, lecteurs d'affichage dynamique | web |
 | [`recherche/openfyde_rk3566.md`](recherche/openfyde_rk3566.md) | openFyde / ChromiumOS sur RK3566 | web |
 | [`recherche/pile_libmali_x11_rk356x.md`](recherche/pile_libmali_x11_rk356x.md) | paquets SDK Rockchip, compatibilité libmali/kbase, OPP | web |
+| [`PISTE_RK3576.md`](PISTE_RK3576.md) | **piste v2** (07/10) : RK3576, où le trouver, support Linux, et le point qui décide — le décodage matériel dans Chromium ; à instruire après l'Urban Trail | lu + déduit |
 
 **Réserve commune aux notes web** : la session qui les a produites passait par un proxy
 qui refusait beaucoup d'hôtes (forums Armbian et Radxa, CNX, Phoronix, freedesktop…). Ces
