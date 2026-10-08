@@ -294,6 +294,11 @@ rapport ou une réponse. Dire « notes du dépôt » ou décrire le changement.
   l'en-tête de /admin (nouvel onglet). Chaque onglet, chaque réglage et ce qu'il fait, rédigé d'après `admin.html` / `admin.mjs`
   — à tenir à jour avec eux. Pendant côté habillage : `/doc-habillage` (app v1.36.0). ⚠ `admin.html` n'a reçu qu'un lien et son
   CSS ; `node --check` de son script passé, page non rendue avec l'état réel (pas de box joignable à ce moment-là).
+  ⚠️ **Masqué le 09/10 (v1.25.2, Eliott, box chez le client)** : `/doc` se lit sans connexion et décrivait Wi-Fi, clés et mises
+  à jour. `fichiers/admin-doc.html` est désormais une page générique (logo PXL en ligne, « En construction », aucun fichier
+  appelé) ; le mode d'emploi complet est gardé de notre côté dans `docs/admin-mode-emploi.html` (non installé) — c'est LUI qu'il
+  faut tenir à jour avec `admin.html` / `admin.mjs`. Le lien « Mode d'emploi » de l'en-tête reste. Même décision côté habillage
+  pour `/astuces` et `/cheatlist` (app v1.42.1). `admin.mjs` relit le fichier à chaque requête : le poser suffit, sans relance.
 - 🔴 **Flux TurboHQ vers un relais distant : « wss ne passe pas » — c'était LA CLÉ** (06/10, v1.25.1, box chez le client, en
   lecture seule). **Mesuré depuis la box** : `https://thq.pxl.re` 200, un `wss://` en spectateur s'ouvre, mais en publisher
   **401 sans clé ET avec la clé de la box** (4 car., posée le jour même). Le journal ne disait que `reconnecting, cause:
