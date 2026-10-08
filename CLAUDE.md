@@ -299,6 +299,12 @@ rapport ou une réponse. Dire « notes du dépôt » ou décrire le changement.
   appelé) ; le mode d'emploi complet est gardé de notre côté dans `docs/admin-mode-emploi.html` (non installé) — c'est LUI qu'il
   faut tenir à jour avec `admin.html` / `admin.mjs`. Le lien « Mode d'emploi » de l'en-tête reste. Même décision côté habillage
   pour `/astuces` et `/cheatlist` (app v1.42.1). `admin.mjs` relit le fichier à chaque requête : le poser suffit, sans relance.
+  ✅ **Posée sur la box le 09/10 à 01 h 27 SANS rejouer `installer.sh`** : il refait `apt-get update` + `install`, donc il
+  aurait pu mettre à jour Chromium, Tailscale… chez le client, deux jours avant la course, pour un seul fichier changé.
+  Geste : `maj.mjs verifier box` ; diff de `installation/` entre l'installé (6756ed6) et le vérifié (2cc66bc) = VERSION +
+  `admin-doc.html` seulement (le script s'arrête sinon) ; `checkout` du clone ; `install -m 644` comme l'installeur (l. 168) ;
+  `/etc/pxl-kiosk/version` au format de la l. 145 ; `maj.json` › `box` (commit, precedent, le, `note` qui le dit) ; anciens
+  fichiers en `*.avant-1.25.2` ; `sync`. `/doc` vérifié identique au dépôt.
 - 🔴 **Flux TurboHQ vers un relais distant : « wss ne passe pas » — c'était LA CLÉ** (06/10, v1.25.1, box chez le client, en
   lecture seule). **Mesuré depuis la box** : `https://thq.pxl.re` 200, un `wss://` en spectateur s'ouvre, mais en publisher
   **401 sans clé ET avec la clé de la box** (4 car., posée le jour même). Le journal ne disait que `reconnecting, cause:
